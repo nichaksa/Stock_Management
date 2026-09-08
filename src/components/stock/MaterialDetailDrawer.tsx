@@ -392,16 +392,18 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-hidden border border-app-border dark:border-app-darkBorder rounded-2xl bg-white dark:bg-app-darkSurface shadow-subtle">
+                  <div className="overflow-x-auto border border-app-border dark:border-app-darkBorder rounded-2xl bg-white dark:bg-app-darkSurface shadow-subtle">
                     <table className="w-full text-left border-collapse text-xs">
-                      <thead className="text-[10px] uppercase font-semibold text-app-secondary dark:text-app-darkSecondary bg-app-bg dark:bg-app-darkBg border-b border-app-border dark:border-app-darkBorder">
+                      <thead className="text-[10px] uppercase font-semibold text-app-secondary dark:text-app-darkSecondary bg-app-bg dark:bg-app-darkBg border-b border-app-border dark:border-app-darkBorder whitespace-nowrap">
                         <tr>
                           <th className="py-2.5 px-3">Date / Time</th>
+                          <th className="py-2.5 px-3">Event Type</th>
+                          <th className="py-2.5 px-3">Process Origin</th>
                           <th className="py-2.5 px-3">Type</th>
                           <th className="py-2.5 px-3 text-right">Movement</th>
                           <th className="py-2.5 px-3">User</th>
-                          <th className="py-2.5 px-3">Batch</th>
-                          <th className="py-2.5 px-3">Process</th>
+                          <th className="py-2.5 px-3">Supplier</th>
+                          <th className="py-2.5 px-3">Batch / Lot / SN</th>
                           <th className="py-2.5 px-3 text-center">Detail</th>
                         </tr>
                       </thead>
@@ -426,25 +428,33 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
                                     : 'hover:bg-app-bg/50 dark:hover:bg-app-darkBorder/30'
                                 }`}
                               >
-                                <td className="py-2.5 px-3 font-mono text-[11px] text-app-text dark:text-app-darkText">
+                                <td className="py-2.5 px-3 font-mono text-[11px] text-app-text dark:text-app-darkText whitespace-nowrap">
                                   {formatDateTime(tx.createdAt)}
                                 </td>
-                                <td className="py-2.5 px-3">
+                                <td className="py-2.5 px-3 whitespace-nowrap">
                                   <StatusBadge status={tx.transactionType} size="sm" showDot={false} />
                                 </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold">
+                                <td className="py-2.5 px-3 text-app-text dark:text-app-darkText font-medium whitespace-nowrap">
+                                  <span className="px-2 py-0.5 rounded-md bg-app-bg dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder text-[11px] font-mono">
+                                    {tx.process || (tx.transactionType === 'GR' ? 'Stock Balance > GR' : tx.transactionType === 'GI' ? 'Stock Balance > GI' : 'Adjustment')}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-app-secondary dark:text-app-darkSecondary font-medium truncate max-w-[130px]">
+                                  {tx.type || tx.process || '-'}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
                                   <span className={isPositive ? 'text-gr' : 'text-gi'}>
                                     {isPositive ? `+${tx.quantity}` : `${tx.quantity}`} {material.unit}
                                   </span>
                                 </td>
-                                <td className="py-2.5 px-3 font-mono text-app-secondary dark:text-app-darkSecondary">
+                                <td className="py-2.5 px-3 font-mono text-app-secondary dark:text-app-darkSecondary whitespace-nowrap">
                                   {tx.createdBy}
                                 </td>
-                                <td className="py-2.5 px-3 font-mono text-app-muted">
-                                  {tx.batchNo || '-'}
+                                <td className="py-2.5 px-3 text-app-muted truncate max-w-[120px]">
+                                  {tx.supplier || '-'}
                                 </td>
-                                <td className="py-2.5 px-3 text-app-text dark:text-app-darkText font-medium truncate max-w-[140px]">
-                                  {tx.process || '-'}
+                                <td className="py-2.5 px-3 font-mono text-[11px] text-app-muted whitespace-nowrap">
+                                  {tx.batchNo ? `B: ${tx.batchNo}` : tx.lotNo ? `L: ${tx.lotNo}` : tx.serialNo ? `S: ${tx.serialNo}` : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 text-center text-app-muted">
                                   {isExpanded ? (
@@ -458,46 +468,83 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
                               {/* Expandable Full Audit Row */}
                               {isExpanded && (
                                 <tr className="bg-app-bg/60 dark:bg-app-darkBg/60">
-                                  <td colSpan={7} className="p-3.5">
-                                    <div className="p-3 rounded-xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
-                                      <div>
-                                        <span className="text-app-muted block">Document No.</span>
-                                        <span className="font-mono font-bold text-brand-blue">{tx.documentNo}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-app-muted block">Plant / SLoc / Bin</span>
-                                        <span className="font-mono text-app-text dark:text-app-darkText">
-                                          {tx.plant} · {tx.storageLocation || '-'} · {tx.storageBin || '-'}
-                                        </span>
-                                      </div>
-                                      <div>
-                                        <span className="text-app-muted block">Balance Before → After</span>
-                                        <span className="font-mono font-bold text-app-text dark:text-app-darkText">
-                                          {tx.balanceBefore} → {tx.balanceAfter} {material.unit}
-                                        </span>
-                                      </div>
-                                      <div>
-                                        <span className="text-app-muted block">Ref No / Picklist</span>
-                                        <span className="font-mono text-app-text dark:text-app-darkText">
-                                          {tx.referenceNo || '-'} {tx.picklist ? `/ ${tx.picklist}` : ''}
-                                        </span>
-                                      </div>
-                                      {tx.serialNo && (
-                                        <div>
-                                          <span className="text-app-muted block">Serial No (S/N)</span>
-                                          <span className="font-mono text-app-text dark:text-app-darkText">{tx.serialNo}</span>
+                                  <td colSpan={9} className="p-3.5">
+                                    <div className="p-4 rounded-xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder space-y-3 shadow-subtle">
+                                      <div className="flex items-center justify-between pb-2 border-b border-app-border dark:border-app-darkBorder">
+                                        <div className="flex items-center gap-2">
+                                          <StatusBadge status={tx.transactionType} size="sm" />
+                                          <span className="font-mono font-bold text-xs text-brand-blue">
+                                            {tx.documentNo}
+                                          </span>
                                         </div>
-                                      )}
-                                      {tx.lotNo && (
-                                        <div>
-                                          <span className="text-app-muted block">Lot No.</span>
-                                          <span className="font-mono text-app-text dark:text-app-darkText">{tx.lotNo}</span>
+                                        <span className="text-[11px] text-app-muted font-mono">
+                                          Recorded: {formatDateTime(tx.createdAt)} by <strong className="text-app-text dark:text-app-darkText">{tx.createdBy}</strong>
+                                        </span>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Process Origin</span>
+                                          <span className="font-mono font-bold text-app-text dark:text-app-darkText">
+                                            {tx.process || (tx.transactionType === 'GR' ? 'Stock Balance > GR' : 'Stock Balance > GI')}
+                                          </span>
                                         </div>
-                                      )}
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Type / Reason</span>
+                                          <span className="font-semibold text-app-text dark:text-app-darkText">
+                                            {tx.type || tx.process || '-'}
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Balance Progression</span>
+                                          <span className="font-mono font-bold text-app-text dark:text-app-darkText">
+                                            {tx.balanceBefore} → {tx.balanceAfter} {material.unit}
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Unit Price / Value</span>
+                                          <span className="font-mono font-bold text-brand-blue">
+                                            ฿{Number(tx.pricePerUnit || material.standardPrice || 0).toLocaleString()} (Total: ฿{Number(tx.totalPrice || (Math.abs(tx.quantity) * (tx.pricePerUnit || material.standardPrice || 0))).toLocaleString()})
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Batch No.</span>
+                                          <span className="font-mono text-app-text dark:text-app-darkText">
+                                            {tx.batchNo || '-'}
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Serial Number (S/N)</span>
+                                          <span className="font-mono text-app-text dark:text-app-darkText">
+                                            {tx.serialNo || '-'}
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Lot</span>
+                                          <span className="font-mono text-app-text dark:text-app-darkText">
+                                            {tx.lotNo || '-'}
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Supplier</span>
+                                          <span className="text-app-text dark:text-app-darkText truncate block">
+                                            {tx.supplier || '-'}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Audit Comment */}
                                       {tx.comment && (
-                                        <div className="col-span-2 sm:col-span-4 mt-1 pt-1.5 border-t border-app-border dark:border-app-darkBorder">
-                                          <span className="text-app-muted block">Audit Comment:</span>
-                                          <p className="italic text-app-secondary dark:text-app-darkSecondary">
+                                        <div className="pt-2 border-t border-app-border dark:border-app-darkBorder text-[11px]">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Audit Comment:</span>
+                                          <p className="mt-0.5 text-app-text dark:text-app-darkText font-medium bg-app-bg/40 dark:bg-app-darkBg/40 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
                                             {tx.comment}
                                           </p>
                                         </div>

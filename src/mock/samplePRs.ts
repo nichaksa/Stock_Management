@@ -1,0 +1,125 @@
+import { TransactionItem } from '../types/stock';
+
+export interface SamplePurchaseRequisition {
+  prId: string;
+  prNumber: string;
+  department: string;
+  plant: string;
+  supplier: string;
+  items: Omit<TransactionItem, 'id'>[];
+}
+
+export const SAMPLE_PURCHASE_REQUISITIONS: SamplePurchaseRequisition[] = [
+  {
+    prId: "PR-2026-9042",
+    prNumber: "PR-2026-9042",
+    department: "Packaging Maintenance",
+    plant: "DEMO",
+    supplier: "HBM Sensors Ltd.",
+    items: [
+      {
+        materialId: "mat-001",
+        materialCode: "C203001000",
+        description: "LOADCELL,50KG,1Z6FC3/50KG-1,HBM",
+        lot: "L260908",
+        batchNumber: "B260908",
+        serialNumber: "SN-99201",
+        quantity: 10,
+        price: 12500,
+        type: "Spare Part",
+        comment: "Restock for Line 1 packaging scale",
+        supplier: "HBM Sensors Ltd.",
+        storageLocation: "MAIN",
+        storageBin: "A01-01",
+        unit: "EA",
+        totalPrice: 125000,
+      },
+      {
+        materialId: "mat-002",
+        materialCode: "C203001001",
+        description: "LOADCELL,1T,PR 6212/1TC1,Minebea",
+        lot: "L260908",
+        batchNumber: "B260908",
+        serialNumber: "SN-99202",
+        quantity: 5,
+        price: 28400,
+        type: "Spare Part",
+        comment: "Critical silo loadcell backup",
+        supplier: "Minebea Intec Co.",
+        storageLocation: "MAIN",
+        storageBin: "A01-02",
+        unit: "EA",
+        totalPrice: 142000,
+      },
+    ],
+  },
+  {
+    prId: "PR-2026-0881",
+    prNumber: "PR-2026-0881",
+    department: "Electrical Automation",
+    plant: "PLANT-01",
+    supplier: "Schneider Electric Thailand",
+    items: [
+      {
+        materialId: "mat-003",
+        materialCode: "C203001003",
+        description: "LOADCELL,2T,PR6203/2TD1,MINEBEA",
+        lot: "L260908",
+        batchNumber: "B260908",
+        serialNumber: "SN-88102",
+        quantity: 4,
+        price: 34000,
+        type: "Spare Part",
+        comment: "Mixer tank weighing sensor replenishment",
+        supplier: "Minebea Intec Co.",
+        storageLocation: "SPARE",
+        storageBin: "A02-01",
+        unit: "EA",
+        totalPrice: 136000,
+      },
+      {
+        materialId: "mat-004",
+        materialCode: "C203001004",
+        description: "LOADCELL,5T,PR6201/53D1,MINEBEA",
+        lot: "L260908",
+        batchNumber: "B260908",
+        serialNumber: "SN-88103",
+        quantity: 2,
+        price: 49500,
+        type: "Spare Part",
+        comment: "Raw material bulk hopper loadcell",
+        supplier: "Minebea Intec Co.",
+        storageLocation: "SPARE",
+        storageBin: "A02-02",
+        unit: "EA",
+        totalPrice: 99000,
+      },
+    ],
+  },
+  {
+    prId: "PR-2026-1033",
+    prNumber: "PR-2026-1033",
+    department: "Plant Utilities",
+    plant: "PLANT-02",
+    supplier: "Omron Automation Ltd.",
+    items: [
+      {
+        materialId: "mat-005",
+        materialCode: "C203001005",
+        description: "LOADCELL,10T,PR6201/14D1,MINEBEA",
+        lot: "L260908",
+        batchNumber: "B260908",
+        serialNumber: "SN-77301",
+        quantity: 2,
+        price: 68000,
+        type: "Spare Part",
+        comment: "Main boiler fuel storage weighbridge",
+        supplier: "Minebea Intec Co.",
+        storageLocation: "BULK",
+        storageBin: "B01-01",
+        unit: "EA",
+        totalPrice: 136000,
+      },
+    ],
+  },
+];

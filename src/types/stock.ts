@@ -35,6 +35,7 @@ export interface Material {
 
 export interface StockTransaction {
   id: string;
+  documentId?: string;
   documentNo: string;
   plant: string;
   materialId: string;
@@ -53,9 +54,46 @@ export interface StockTransaction {
   picklist?: string;
   process?: string;
   referenceNo?: string;
+  type?: string;
+  supplier?: string;
   comment?: string;
   createdBy: string;
   createdAt: string; // ISO 8601 string
+}
+
+export interface TransactionItem {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  description: string;
+  lot?: string;
+  batchNumber?: string;
+  serialNumber?: string;
+  quantity: number; // positive quantity entered by user
+  price: number;
+  type?: string;
+  comment?: string;
+  supplier?: string;
+  storageLocation?: string;
+  storageBin?: string;
+  unit?: string;
+  totalPrice?: number;
+}
+
+export interface TransactionDocument {
+  id: string;
+  transactionNumber: string; // e.g. "GR-20260908-001" or "GI-20260908-002"
+  transactionType: TransactionType; // "GR" | "GI" | "OPENING" | "ADJUSTMENT"
+  plant: string;
+  referenceNumber?: string;
+  prId?: string;
+  createdDateTime: string;
+  createdBy: string;
+  comment?: string;
+  status: 'COMPLETED' | 'POSTED' | 'DRAFT' | 'CANCELLED';
+  items: TransactionItem[];
+  totalQuantity: number;
+  totalValue: number;
 }
 
 export interface MaterialWithStock extends Material {

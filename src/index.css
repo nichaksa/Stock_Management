@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --app-bg: #F7F9FC;
+    --app-surface: #FFFFFF;
+    --app-border: #E5EAF1;
+    --app-text: #172033;
+    --app-secondary: #667085;
+    --app-muted: #98A2B3;
+  }
+
+  .dark {
+    --app-bg: #0B1120;
+    --app-surface: #151E32;
+    --app-border: #23304B;
+    --app-text: #F1F5F9;
+    --app-secondary: #94A3B8;
+    --app-muted: #64748B;
+  }
+
+  body {
+    background-color: var(--app-bg);
+    color: var(--app-text);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+}
+
+/* Custom sleek scrollbar for industrial data tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(152, 162, 179, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 112, 133, 0.6);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Table styling helpers */
+.table-compact th,
+.table-compact td {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}

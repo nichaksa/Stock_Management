@@ -90,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   return (
     <>
-      <header className="h-14 sm:h-16 px-4 border-b border-app-border dark:border-app-darkBorder bg-white/95 dark:bg-app-darkSurface/95 backdrop-blur-md sticky top-0 z-30 flex items-center justify-between shadow-subtle">
+      <header className="h-16 px-4 border-b border-[#E5EAF1] dark:border-app-darkBorder bg-white dark:bg-app-darkSurface sticky top-0 z-40 flex items-center justify-between shadow-subtle shrink-0">
         {/* LEFT SECTION */}
         <div className="flex items-center gap-2 sm:gap-3">
           <button

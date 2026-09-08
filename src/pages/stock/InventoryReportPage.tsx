@@ -1,175 +1,372 @@
 import React, { useState, useMemo } from 'react';
 import { PageLayout } from '../../components/layout/PageLayout';
-import { StatusBadge } from '../../components/common/StatusBadge';
+import { GlobalFilterBar, GlobalFilterState, ReportViewMode } from '../../components/stock/GlobalFilterBar';
+import { InventoryKpiGrid, InventoryKpiMetrics } from '../../components/stock/InventoryKpiGrid';
+import { MovementTrendChart } from '../../components/stock/MovementTrendChart';
+import { InventoryByPlantWidget, PlantInventorySummary } from '../../components/stock/InventoryByPlantWidget';
+import { InventoryCompositionDonut, TypeCompositionItem } from '../../components/stock/InventoryCompositionDonut';
+import { MovementByPlantChart, PlantMovementComparison } from '../../components/stock/MovementByPlantChart';
+import { PendingTasksPanel } from '../../components/stock/PendingTasksPanel';
+import { RecentMovementsTable } from '../../components/stock/RecentMovementsTable';
 import { MaterialDetailDrawer } from '../../components/stock/MaterialDetailDrawer';
+import { TransactionDetailDrawer } from '../../components/stock/TransactionDetailDrawer';
+
 import { useStock } from '../../context/StockContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { exportInventoryReportToCsv } from '../../utils/export';
-import { getCurrentStock, calculateStockStatus, getLastMovement } from '../../utils/stockCalculation';
-import { formatDateTime } from '../../utils/dateRange';
-import { Material, StockStatus } from '../../types/stock';
 import {
-  Download,
-  DollarSign,
-  Package,
-  TrendingUp,
-  AlertTriangle,
-  Clock,
-  PieChart as PieChartIcon,
-  BarChart3,
-  Layers,
-  ArrowUpRight,
-  ShieldAlert,
-} from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from 'recharts';
+  getStockAtDateTime,
+  calculateStockStatus,
+  getMovementTrendGranularData,
+  ChartGranularity,
+} from '../../utils/stockCalculation';
+import { Material, StockTransaction, PendingTask, WorkflowStatus } from '../../types/stock';
+import { INITIAL_PENDING_TASKS } from '../../mock/pendingTasks';
+import { Download, RefreshCw, BarChart2 } from 'lucide-react';
 
 export const InventoryReportPage: React.FC = () => {
   const { materials, transactions } = useStock();
-  const { t } = useLanguage();
-  const { theme } = useTheme();
+  const { t, language } = useLanguage();
   const { addToast } = useToast();
-  const isDark = theme === 'dark';
+  const { currentUser } = useAuth();
+  const isTh = language === 'th';
 
+  // Global Filter State
+  const [globalFilter, setGlobalFilter] = useState<GlobalFilterState>(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - 31);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      viewMode: 'OVERVIEW',
+      selectedPlant: 'All Plants',
+      startDate: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+      startHour: '00',
+      startMinute: '00',
+      endDate: `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`,
+      endHour: '23',
+      endMinute: '59',
+    };
+  });
+
+  // Chart Granularity State (Daily, Monthly, Yearly)
+  const [trendGranularity, setTrendGranularity] = useState<ChartGranularity>('Daily');
+
+  // Pending Tasks State with local workflow mutations
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>(() => {
+    try {
+      const saved = localStorage.getItem('zycoda_pending_tasks_v1');
+      return saved ? JSON.parse(saved) : INITIAL_PENDING_TASKS;
+    } catch {
+      return INITIAL_PENDING_TASKS;
+    }
+  });
+
+  // Drawers
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
-  const [slowMoveDays, setSlowMoveDays] = useState<number>(30);
+  const [selectedTransaction, setSelectedTransaction] = useState<StockTransaction | null>(null);
 
-  // Enriched stock information
-  const enrichedMaterials = useMemo(() => {
-    return materials.map(m => {
-      const currentStock = getCurrentStock(m.id, transactions);
-      const stockStatus = calculateStockStatus(m, currentStock);
-      const lastMovement = getLastMovement(m.id, transactions);
-      const totalValue = currentStock * (m.standardPrice || 0);
+  // Derive exact ISO strings for filtering
+  const startDateTimeStr = useMemo(() => {
+    return `${globalFilter.startDate}T${globalFilter.startHour}:${globalFilter.startMinute}:00`;
+  }, [globalFilter.startDate, globalFilter.startHour, globalFilter.startMinute]);
 
-      // Days since last movement
-      let daysSinceLastMove = 999;
-      if (lastMovement) {
-        const diffMs = Date.now() - new Date(lastMovement.createdAt).getTime();
-        daysSinceLastMove = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const endDateTimeStr = useMemo(() => {
+    return `${globalFilter.endDate}T${globalFilter.endHour}:${globalFilter.endMinute}:59`;
+  }, [globalFilter.endDate, globalFilter.endHour, globalFilter.endMinute]);
+
+  // CUMULATIVE INVENTORY BALANCE AT END DATE
+  // Critical calculation: cumulative sum of all transactions up to endDateTimeStr!
+  const materialsWithStockAtEndDate = useMemo(() => {
+    const filteredByPlant = materials.filter(m => {
+      if (globalFilter.selectedPlant !== 'All Plants' && m.plant !== globalFilter.selectedPlant) {
+        return false;
       }
+      return true;
+    });
+
+    return filteredByPlant.map(m => {
+      const currentStock = getStockAtDateTime(m.id, transactions, endDateTimeStr);
+      const stockStatus = calculateStockStatus(m, currentStock);
+      const totalValue = currentStock * (m.standardPrice || 0);
 
       return {
         ...m,
         currentStock,
         stockStatus,
-        lastMovement,
         totalValue,
-        daysSinceLastMove,
       };
     });
-  }, [materials, transactions]);
+  }, [materials, transactions, endDateTimeStr, globalFilter.selectedPlant]);
 
-  // KPIs
-  const reportKpis = useMemo(() => {
-    let totalVal = 0;
-    let totalItems = enrichedMaterials.length;
-    let normal = 0;
-    let reordering = 0;
-    let overmax = 0;
-    let undermin = 0;
-    let outOfStock = 0;
+  // 1. KPI Metrics
+  const kpiMetrics: InventoryKpiMetrics = useMemo(() => {
+    let totalInventoryQty = 0;
+    let totalInventoryVal = 0;
+    let overStockCount = 0;
+    let overStockVal = 0;
+    let reorderCount = 0;
+    let reorderVal = 0;
+    let underminCount = 0;
+    let underminVal = 0;
+    let outOfStockCount = 0;
+    let outOfStockVal = 0;
+    let healthyCount = 0;
 
-    enrichedMaterials.forEach(m => {
-      totalVal += m.totalValue;
-      if (m.stockStatus === 'NORMAL') normal++;
-      else if (m.stockStatus === 'REORDERING') reordering++;
-      else if (m.stockStatus === 'OVERMAX') overmax++;
-      else if (m.stockStatus === 'UNDERMIN') undermin++;
-      else if (m.stockStatus === 'OUT_OF_STOCK') outOfStock++;
+    materialsWithStockAtEndDate.forEach(m => {
+      totalInventoryQty += m.currentStock;
+      totalInventoryVal += m.totalValue;
+
+      if (m.stockStatus === 'OVERMAX') {
+        overStockCount++;
+        overStockVal += m.totalValue;
+      } else if (m.stockStatus === 'REORDERING') {
+        reorderCount++;
+        reorderVal += m.totalValue;
+      } else if (m.stockStatus === 'UNDERMIN') {
+        underminCount++;
+        underminVal += m.totalValue;
+      } else if (m.stockStatus === 'OUT_OF_STOCK') {
+        outOfStockCount++;
+        outOfStockVal += (m.max || 5) * (m.standardPrice || 0); // target reorder value
+      } else if (m.stockStatus === 'NORMAL') {
+        healthyCount++;
+      }
     });
 
-    return { totalVal, totalItems, normal, reordering, overmax, undermin, outOfStock };
-  }, [enrichedMaterials]);
+    return {
+      totalInventoryQty,
+      totalInventoryVal,
+      totalItemsCount: materialsWithStockAtEndDate.length,
+      overStockCount,
+      overStockVal,
+      reorderCount,
+      reorderVal,
+      underminCount,
+      underminVal,
+      outOfStockCount,
+      outOfStockVal,
+      healthyCount,
+    };
+  }, [materialsWithStockAtEndDate]);
 
-  // Reorder / Attention List
-  const reorderAttentionList = useMemo(() => {
-    return enrichedMaterials
-      .filter(m => m.stockStatus === 'OUT_OF_STOCK' || m.stockStatus === 'UNDERMIN' || m.stockStatus === 'REORDERING')
-      .sort((a, b) => {
-        const priorityOrder: Record<StockStatus, number> = {
-          OUT_OF_STOCK: 1,
-          UNDERMIN: 2,
-          REORDERING: 3,
-          OVERMAX: 4,
-          NORMAL: 5,
-        };
-        return priorityOrder[a.stockStatus] - priorityOrder[b.stockStatus];
-      });
-  }, [enrichedMaterials]);
-
-  // Slow / Non-Moving List
-  const slowMovingList = useMemo(() => {
-    return enrichedMaterials
-      .filter(m => m.daysSinceLastMove >= slowMoveDays && m.currentStock > 0)
-      .sort((a, b) => b.daysSinceLastMove - a.daysSinceLastMove);
-  }, [enrichedMaterials, slowMoveDays]);
-
-  // Status composition chart data
-  const statusPieData = useMemo(() => {
-    const data = [
-      { name: 'Normal', value: reportKpis.normal, color: '#16A34A' },
-      { name: 'Reordering', value: reportKpis.reordering, color: '#D97706' },
-      { name: 'Overmax', value: reportKpis.overmax, color: '#9333EA' },
-      { name: 'Undermin', value: reportKpis.undermin, color: '#EA580C' },
-      { name: 'Out of Stock', value: reportKpis.outOfStock, color: '#DC2626' },
-    ];
-    return data.filter(d => d.value > 0);
-  }, [reportKpis]);
-
-  // Value by Material Type chart data
-  const valueByTypeData = useMemo(() => {
-    const map: Record<string, number> = {};
-    enrichedMaterials.forEach(m => {
-      map[m.materialType] = (map[m.materialType] || 0) + m.totalValue;
-    });
-
-    return Object.entries(map)
-      .map(([type, value]) => ({ type, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [enrichedMaterials]);
-
-  // GR vs GI summary by month/week
+  // 2. Trend Time Series Data (GR vs GI with Daily, Monthly, Yearly granularity)
   const movementTrendData = useMemo(() => {
-    let totalGr = 0;
-    let totalGi = 0;
-    let totalOpening = 0;
+    return getMovementTrendGranularData(
+      transactions,
+      startDateTimeStr,
+      endDateTimeStr,
+      trendGranularity,
+      globalFilter.selectedPlant
+    );
+  }, [transactions, startDateTimeStr, endDateTimeStr, trendGranularity, globalFilter.selectedPlant]);
 
-    transactions.forEach(t => {
-      if (t.transactionType === 'GR') totalGr += t.quantity;
-      if (t.transactionType === 'GI') totalGi += Math.abs(t.quantity);
-      if (t.transactionType === 'OPENING') totalOpening += t.quantity;
+  // 3. Inventory Composition by Material Type
+  const compositionData: TypeCompositionItem[] = useMemo(() => {
+    const map: Record<string, { itemCount: number; quantity: number; value: number }> = {};
+
+    materialsWithStockAtEndDate.forEach(m => {
+      if (!map[m.materialType]) {
+        map[m.materialType] = { itemCount: 0, quantity: 0, value: 0 };
+      }
+      map[m.materialType].itemCount += 1;
+      map[m.materialType].quantity += m.currentStock;
+      map[m.materialType].value += m.totalValue;
     });
 
-    return [
-      { name: 'Opening Baseline', Volume: totalOpening, fill: '#2563EB' },
-      { name: 'Goods Receipt (GR)', Volume: totalGr, fill: '#16A34A' },
-      { name: 'Goods Issue (GI)', Volume: totalGi, fill: '#DC2626' },
-    ];
-  }, [transactions]);
+    return Object.entries(map).map(([type, stats]) => ({
+      name: type,
+      itemCount: stats.itemCount,
+      quantity: stats.quantity,
+      value: stats.value,
+      color: '', // generated dynamically in donut component
+    }));
+  }, [materialsWithStockAtEndDate]);
+
+  // 4. Inventory by Plant Breakdown
+  const plantSummaries: PlantInventorySummary[] = useMemo(() => {
+    const plants = ['DEMO', 'PLANT-01', 'PLANT-02'];
+    const totalValAll = kpiMetrics.totalInventoryVal || 1;
+    const totalQtyAll = kpiMetrics.totalInventoryQty || 1;
+
+    return plants.map(plantName => {
+      const plantMats = materials.filter(m => m.plant === plantName);
+      let totalQuantity = 0;
+      let totalValue = 0;
+
+      plantMats.forEach(m => {
+        const stock = getStockAtDateTime(m.id, transactions, endDateTimeStr);
+        totalQuantity += stock;
+        totalValue += stock * (m.standardPrice || 0);
+      });
+
+      const percentage = globalFilter.viewMode === 'PRICE'
+        ? (totalValue / totalValAll) * 100
+        : (totalQuantity / totalQtyAll) * 100;
+
+      return {
+        plant: plantName,
+        itemCount: plantMats.length,
+        totalQuantity,
+        totalValue,
+        percentage: Math.min(100, Math.max(0, percentage)),
+      };
+    });
+  }, [materials, transactions, endDateTimeStr, kpiMetrics, globalFilter.viewMode]);
+
+  // 5. GR vs GI by Plant Comparison Chart Data
+  const plantMovementData: PlantMovementComparison[] = useMemo(() => {
+    const plants = ['DEMO', 'PLANT-01', 'PLANT-02'];
+    const startTime = new Date(startDateTimeStr).getTime();
+    const endTime = new Date(endDateTimeStr).getTime();
+
+    const inRangeTx = transactions.filter(t => {
+      const tTime = new Date(t.createdAt).getTime();
+      return tTime >= startTime && tTime <= endTime;
+    });
+
+    return plants.map(plantName => {
+      const plantTx = inRangeTx.filter(t => t.plant === plantName);
+      let grQty = 0;
+      let giQty = 0;
+      let grValue = 0;
+      let giValue = 0;
+
+      plantTx.forEach(t => {
+        const price = t.pricePerUnit || 0;
+        if (t.transactionType === 'GR' || t.transactionType === 'OPENING') {
+          const qty = Math.abs(t.quantity);
+          grQty += qty;
+          grValue += t.totalPrice || qty * price;
+        } else if (t.transactionType === 'GI') {
+          const qty = Math.abs(t.quantity);
+          giQty += qty;
+          giValue += t.totalPrice || qty * price;
+        } else if (t.transactionType === 'ADJUSTMENT') {
+          if (t.quantity > 0) {
+            grQty += t.quantity;
+            grValue += t.totalPrice || t.quantity * price;
+          } else {
+            const qty = Math.abs(t.quantity);
+            giQty += qty;
+            giValue += t.totalPrice || qty * price;
+          }
+        }
+      });
+
+      return {
+        plant: plantName,
+        grQty,
+        giQty,
+        grValue,
+        giValue,
+      };
+    });
+  }, [transactions, startDateTimeStr, endDateTimeStr]);
+
+  // 6. Recent Movements within Filter Range
+  const filteredRecentMovements = useMemo(() => {
+    const startTime = new Date(startDateTimeStr).getTime();
+    const endTime = new Date(endDateTimeStr).getTime();
+
+    return transactions
+      .filter(tx => {
+        if (globalFilter.selectedPlant !== 'All Plants' && tx.plant !== globalFilter.selectedPlant) {
+          return false;
+        }
+        const txTime = new Date(tx.createdAt).getTime();
+        return txTime >= startTime && txTime <= endTime;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant]);
+
+  // 7. Filtered Pending Tasks
+  const filteredPendingTasks = useMemo(() => {
+    if (globalFilter.selectedPlant === 'All Plants') return pendingTasks;
+    return pendingTasks.filter(t => t.plant === globalFilter.selectedPlant);
+  }, [pendingTasks, globalFilter.selectedPlant]);
+
+  // Workflow handlers
+  const handleAdvanceWorkflow = (taskId: string, nextStatus: WorkflowStatus) => {
+    const userName = currentUser?.fullName || currentUser?.username || 'Admin Store Keeper';
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const timeStamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    setPendingTasks(prev => {
+      const updated = prev.map(task => {
+        if (task.id !== taskId) return task;
+
+        const updatedTimeline = task.timeline.map(step => {
+          if (step.step === nextStatus) {
+            return {
+              ...step,
+              completed: true,
+              active: true,
+              timestamp: timeStamp,
+              responsibleUser: userName,
+            };
+          }
+          if (
+            (nextStatus === 'ACCEPT' && (step.step === 'PENDING' || step.step === 'CREATED')) ||
+            (nextStatus === 'FINISH' && (step.step === 'PENDING' || step.step === 'CREATED' || step.step === 'ACCEPT')) ||
+            (nextStatus === 'CONFIRM')
+          ) {
+            return { ...step, completed: true, active: false };
+          }
+          return step;
+        });
+
+        return {
+          ...task,
+          status: nextStatus,
+          timeline: updatedTimeline,
+        };
+      });
+
+      localStorage.setItem('zycoda_pending_tasks_v1', JSON.stringify(updated));
+      return updated;
+    });
+
+    addToast(`Workflow step advanced to ${nextStatus}`, 'success');
+  };
+
+  const handleRejectWorkflow = (
+    taskId: string,
+    rejectType: 'REJECTED_STORE' | 'REJECTED_MAINTENANCE',
+    reason: string
+  ) => {
+    setPendingTasks(prev => {
+      const updated = prev.map(task => {
+        if (task.id !== taskId) return task;
+        return {
+          ...task,
+          status: rejectType,
+          rejectReason: reason,
+        };
+      });
+      localStorage.setItem('zycoda_pending_tasks_v1', JSON.stringify(updated));
+      return updated;
+    });
+
+    addToast(`Task rejected: ${reason}`, 'warning');
+  };
 
   const handleExport = () => {
     exportInventoryReportToCsv(materials, transactions);
-    addToast('Inventory Report exported successfully', 'success');
+    addToast('Inventory Analytics exported to CSV', 'success');
   };
 
   return (
     <PageLayout
       title={t('inventory_report')}
-      subtitle="Executive inventory analytics, financial valuation, and stock health monitoring"
+      subtitle={
+        isTh
+          ? 'แดชบอร์ดวิเคราะห์สถานะสินค้าคงคลัง ยอดสะสมตามช่วงเวลา และระบบคำขอเบิก PickList'
+          : 'Executive analytics dashboard, cumulative inventory valuation & PickList workflow tracking'
+      }
       actions={
         <button
           type="button"
@@ -182,337 +379,78 @@ export const InventoryReportPage: React.FC = () => {
       }
     >
       <div className="space-y-5">
-        {/* EXECUTIVE KPI CARDS */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {/* Total Value */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-app-muted">
-                {t('total_inventory_value')}
-              </span>
-              <div className="p-2 rounded-xl bg-brand-softBlue dark:bg-blue-950 text-brand-blue">
-                <DollarSign className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-mono font-bold text-brand-blue mt-2">
-              ฿{reportKpis.totalVal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </div>
-            <p className="text-[11px] text-app-muted mt-1">
-              Active ledger valuation based on standard price
-            </p>
-          </div>
+        {/* 1. GLOBAL FILTER SECTION */}
+        <GlobalFilterBar
+          filter={globalFilter}
+          onApplyFilter={(newFilter) => {
+            setGlobalFilter(newFilter);
+            addToast('Analytics filter applied', 'info');
+          }}
+        />
 
-          {/* Total Items */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-app-muted">
-                {t('total_items')}
-              </span>
-              <div className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-app-secondary">
-                <Package className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-mono font-bold text-app-text dark:text-app-darkText mt-2">
-              {reportKpis.totalItems}
-            </div>
-            <p className="text-[11px] text-app-muted mt-1">
-              {reportKpis.normal} healthy · {reportKpis.reordering + reportKpis.undermin + reportKpis.outOfStock} requiring attention
-            </p>
-          </div>
+        {/* 2. 6 EXECUTIVE KPI CARDS */}
+        <InventoryKpiGrid
+          metrics={kpiMetrics}
+          viewMode={globalFilter.viewMode}
+        />
 
-          {/* Attention Items */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-warn">
-                Items Below ROP
-              </span>
-              <div className="p-2 rounded-xl bg-warn-bg dark:bg-warn-darkBg text-warn">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-mono font-bold text-warn mt-2">
-              {reportKpis.reordering + reportKpis.undermin + reportKpis.outOfStock}
-            </div>
-            <p className="text-[11px] text-app-muted mt-1">
-              {reportKpis.outOfStock} out of stock, {reportKpis.undermin} undermin
-            </p>
-          </div>
-
-          {/* Slow Moving */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-app-muted">
-                Slow-Moving Items
-              </span>
-              <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600">
-                <Clock className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-mono font-bold text-app-text dark:text-app-darkText mt-2">
-              {slowMovingList.length}
-            </div>
-            <p className="text-[11px] text-app-muted mt-1">
-              No movement recorded in &gt; {slowMoveDays} days
-            </p>
-          </div>
-        </div>
-
-        {/* CHARTS GRID */}
+        {/* 3. PRIMARY CHARTS ROW: TREND LINE + COMPOSITION DONUT */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Status Composition (Donut) */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-app-border dark:border-app-darkBorder">
-              <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider flex items-center gap-2">
-                <PieChartIcon className="w-4 h-4 text-brand-blue" />
-                <span>{t('status_composition')}</span>
-              </h4>
-            </div>
-
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={statusPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={48}
-                    outerRadius={76}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {statusPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="lg:col-span-2">
+            <MovementTrendChart
+              data={movementTrendData}
+              viewMode={globalFilter.viewMode}
+              granularity={trendGranularity}
+              onGranularityChange={setTrendGranularity}
+            />
           </div>
 
-          {/* Value by Material Type */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-app-border dark:border-app-darkBorder">
-              <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-brand-blue" />
-                <span>{t('value_by_type')}</span>
-              </h4>
-            </div>
-
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={valueByTypeData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#23304B' : '#E5EAF1'} />
-                  <XAxis dataKey="type" stroke={isDark ? '#64748B' : '#98A2B3'} fontSize={10} angle={-25} textAnchor="end" />
-                  <YAxis stroke={isDark ? '#64748B' : '#98A2B3'} fontSize={10} tickFormatter={(val) => `฿${(val / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(val: any) => `฿${Number(val).toLocaleString()}`} />
-                  <Bar dataKey="value" name="Valuation" fill="#2563EB" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* GR vs GI Movement */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-app-border dark:border-app-darkBorder">
-              <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-brand-blue" />
-                <span>{t('gr_vs_gi')}</span>
-              </h4>
-            </div>
-
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={movementTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#23304B' : '#E5EAF1'} />
-                  <XAxis dataKey="name" stroke={isDark ? '#64748B' : '#98A2B3'} fontSize={10} />
-                  <YAxis stroke={isDark ? '#64748B' : '#98A2B3'} fontSize={10} />
-                  <Tooltip />
-                  <Bar dataKey="Volume" name="Quantity Units" radius={[6, 6, 0, 0]}>
-                    {movementTrendData.map((entry, index) => (
-                      <Cell key={`cell-m-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="lg:col-span-1">
+            <InventoryCompositionDonut
+              data={compositionData}
+              viewMode={globalFilter.viewMode}
+            />
           </div>
         </div>
 
-        {/* REORDER / ATTENTION SECTION */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-app-border dark:border-app-darkBorder">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-gi" />
-              <h3 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                {t('reorder_list')}
-              </h3>
-            </div>
-            <span className="text-[11px] font-mono text-app-muted">
-              {reorderAttentionList.length} items requiring replenishment
-            </span>
-          </div>
+        {/* 4. SECONDARY ANALYTICS ROW: INVENTORY BY PLANT + GR/GI BY PLANT */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <InventoryByPlantWidget
+            plantSummaries={plantSummaries}
+            viewMode={globalFilter.viewMode}
+          />
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="text-[10px] uppercase font-semibold text-app-secondary dark:text-app-darkSecondary bg-app-bg dark:bg-app-darkBg border-b border-app-border dark:border-app-darkBorder">
-                <tr>
-                  <th className="py-2.5 px-3">Plant</th>
-                  <th className="py-2.5 px-3">Material</th>
-                  <th className="py-2.5 px-3 text-right">Current Stock</th>
-                  <th className="py-2.5 px-3 text-center">Min / ROP / Max</th>
-                  <th className="py-2.5 px-3 text-center">Lead Time</th>
-                  <th className="py-2.5 px-3 text-center">Status</th>
-                  <th className="py-2.5 px-3 text-right">Suggested Reorder Qty</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-app-border dark:divide-app-darkBorder">
-                {reorderAttentionList.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-app-muted">
-                      No materials currently require replenishment. All stock levels are within normal bounds.
-                    </td>
-                  </tr>
-                ) : (
-                  reorderAttentionList.map(m => {
-                    const suggestedOrder = Math.max(0, m.max - m.currentStock);
-                    return (
-                      <tr
-                        key={m.id}
-                        onClick={() => setSelectedMaterial(m)}
-                        className="hover:bg-app-bg/50 dark:hover:bg-app-darkBorder/30 cursor-pointer transition-colors"
-                      >
-                        <td className="py-2.5 px-3 font-mono font-bold text-[11px]">
-                          {m.plant}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="font-mono font-bold text-brand-blue block">
-                            {m.materialCode}
-                          </span>
-                          <span className="text-app-text dark:text-app-darkText truncate max-w-xs block">
-                            {m.description}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold">
-                          <span className={m.currentStock <= 0 ? 'text-gi' : 'text-warn'}>
-                            {m.currentStock} {m.unit}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-app-secondary">
-                          {m.min} / {m.rop} / {m.max}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono">
-                          {m.leadTime} Days
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <StatusBadge status={m.stockStatus} size="sm" />
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-brand-blue">
-                          +{suggestedOrder} {m.unit}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <MovementByPlantChart
+            data={plantMovementData}
+            viewMode={globalFilter.viewMode}
+          />
         </div>
 
-        {/* SLOW / NON-MOVING SECTION */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-app-border dark:border-app-darkBorder">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-purple-600" />
-              <h3 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                {t('slow_non_moving')}
-              </h3>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-app-muted">Threshold:</span>
-              {[
-                { label: '30 Days', days: 30 },
-                { label: '60 Days', days: 60 },
-                { label: '90 Days', days: 90 },
-              ].map(opt => (
-                <button
-                  key={opt.days}
-                  type="button"
-                  onClick={() => setSlowMoveDays(opt.days)}
-                  className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${
-                    slowMoveDays === opt.days
-                      ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-300 text-purple-700 dark:text-purple-300'
-                      : 'bg-white dark:bg-app-darkSurface border-app-border text-app-secondary hover:text-app-text'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* 5. WORKFLOW & TRANSACTION ROW: PENDING TASKS PANEL */}
+        <PendingTasksPanel
+          tasks={filteredPendingTasks}
+          onAdvanceWorkflow={handleAdvanceWorkflow}
+          onRejectWorkflow={handleRejectWorkflow}
+        />
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="text-[10px] uppercase font-semibold text-app-secondary dark:text-app-darkSecondary bg-app-bg dark:bg-app-darkBg border-b border-app-border dark:border-app-darkBorder">
-                <tr>
-                  <th className="py-2.5 px-3">Plant</th>
-                  <th className="py-2.5 px-3">Material</th>
-                  <th className="py-2.5 px-3 text-right">Current Stock</th>
-                  <th className="py-2.5 px-3 text-right">Holding Value</th>
-                  <th className="py-2.5 px-3">Storage Location</th>
-                  <th className="py-2.5 px-3">Last Movement</th>
-                  <th className="py-2.5 px-3 text-center">Days Inactive</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-app-border dark:divide-app-darkBorder">
-                {slowMovingList.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-app-muted">
-                      No materials match the slow-moving threshold of &gt; {slowMoveDays} days.
-                    </td>
-                  </tr>
-                ) : (
-                  slowMovingList.map(m => (
-                    <tr
-                      key={m.id}
-                      onClick={() => setSelectedMaterial(m)}
-                      className="hover:bg-app-bg/50 dark:hover:bg-app-darkBorder/30 cursor-pointer transition-colors"
-                    >
-                      <td className="py-2.5 px-3 font-mono font-bold text-[11px]">{m.plant}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-mono font-bold text-brand-blue block">{m.materialCode}</span>
-                        <span className="text-app-text dark:text-app-darkText truncate max-w-xs block">{m.description}</span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
-                        {m.currentStock} {m.unit}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-app-text dark:text-app-darkText">
-                        ฿{m.totalValue.toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-app-secondary">
-                        {m.storageLocation} / {m.storageBin}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-app-muted">
-                        {m.lastMovement ? formatDateTime(m.lastMovement.createdAt) : 'Initial Registration'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-purple-600">
-                        {m.daysSinceLastMove >= 999 ? 'No Movements' : `${m.daysSinceLastMove} Days`}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {/* 6. RECENT MOVEMENTS TABLE (WITH SEARCH & 10/20/50/100 PAGINATION) */}
+        <RecentMovementsTable
+          transactions={filteredRecentMovements}
+          onRowClick={(tx) => setSelectedTransaction(tx)}
+        />
       </div>
 
-      {/* Material Detail Drawer */}
+      {/* DRAWERS */}
       <MaterialDetailDrawer
         isOpen={Boolean(selectedMaterial)}
         onClose={() => setSelectedMaterial(null)}
         material={selectedMaterial}
+      />
+
+      <TransactionDetailDrawer
+        isOpen={Boolean(selectedTransaction)}
+        onClose={() => setSelectedTransaction(null)}
+        transaction={selectedTransaction}
       />
     </PageLayout>
   );

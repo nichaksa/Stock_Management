@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { EmptyState } from './EmptyState';
+import { PaginationFooter } from './PaginationFooter';
 
 export interface Column<T> {
   id: string;
@@ -12,6 +13,15 @@ export interface Column<T> {
 }
 
 export type SortDirection = 'asc' | 'desc' | null;
+
+export interface PaginationConfig {
+  currentPage: number;
+  pageSize: number;
+  totalItems: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  pageSizeOptions?: number[];
+}
 
 interface DataTableProps<T> {
   data: T[];
@@ -27,6 +37,7 @@ interface DataTableProps<T> {
   emptyType?: 'materials' | 'transactions' | 'search' | 'generic';
   stickyHeader?: boolean;
   className?: string;
+  pagination?: PaginationConfig;
 }
 
 export function DataTable<T>({
@@ -43,13 +54,14 @@ export function DataTable<T>({
   emptyType = "generic",
   stickyHeader = true,
   className = "",
+  pagination,
 }: DataTableProps<T>) {
   return (
     <div className={`w-full overflow-hidden border border-app-border dark:border-app-darkBorder rounded-2xl bg-white dark:bg-app-darkSurface shadow-subtle ${className}`}>
       <div className="overflow-x-auto min-h-[300px]">
         <table className="w-full text-left border-collapse text-xs sm:text-sm">
           <thead className={`text-[11px] uppercase tracking-wider font-semibold text-app-secondary dark:text-app-darkSecondary bg-app-bg/80 dark:bg-app-darkBg/80 border-b border-app-border dark:border-app-darkBorder ${stickyHeader ? 'sticky top-0 z-10 backdrop-blur-sm' : ''}`}>
-            <tr>
+            <tr className="h-[44px]">
               {columns.map((col) => {
                 const isSorted = sortColumn === col.id;
                 return (
@@ -102,7 +114,7 @@ export function DataTable<T>({
                   <tr
                     key={rowKey}
                     onClick={() => onRowClick && onRowClick(item)}
-                    className={`transition-colors ${
+                    className={`h-[54px] transition-colors ${
                       onRowClick ? 'cursor-pointer' : ''
                     } ${
                       isSelected
@@ -113,7 +125,7 @@ export function DataTable<T>({
                     {columns.map((col) => (
                       <td
                         key={col.id}
-                        className={`py-3 px-4 ${
+                        className={`py-3 px-4 h-[54px] align-middle ${
                           col.align === 'right'
                             ? 'text-right'
                             : col.align === 'center'
@@ -131,6 +143,18 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Footer */}
+      {pagination && (
+        <PaginationFooter
+          currentPage={pagination.currentPage}
+          totalItems={pagination.totalItems}
+          pageSize={pagination.pageSize}
+          onPageChange={pagination.onPageChange}
+          onPageSizeChange={pagination.onPageSizeChange}
+          pageSizeOptions={pagination.pageSizeOptions}
+        />
+      )}
     </div>
   );
 }

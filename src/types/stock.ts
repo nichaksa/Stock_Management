@@ -81,3 +81,58 @@ export type PresetRangeKey =
   | "last_month"
   | "this_year"
   | "custom";
+
+export type WorkflowStatus =
+  | 'PENDING'
+  | 'CREATED'
+  | 'ACCEPT'
+  | 'FINISH'
+  | 'CONFIRM'
+  | 'REJECTED_STORE'
+  | 'REJECTED_MAINTENANCE';
+
+export interface TaskMaterialLine {
+  id: string;
+  materialCode: string;
+  description: string;
+  element?: string;
+  ioNo?: string;
+  comment?: string;
+  unit: string;
+  quantity: number;
+  pricePerUnit: number;
+  totalPrice: number;
+}
+
+export interface WorkflowStep {
+  step: 'PENDING' | 'CREATED' | 'ACCEPT' | 'FINISH' | 'CONFIRM';
+  label: string;
+  completed: boolean;
+  active: boolean;
+  timestamp?: string;
+  responsibleUser?: string;
+}
+
+export interface PendingTask {
+  id: string;
+  taskNo: string;
+  picklistNo: string;
+  jobOrderNo: string;
+  title: string;
+  type: 'Factory Requisition' | 'Maintenance Request' | 'Emergency Repair' | 'Routine Overhaul';
+  costCenter: string;
+  location: string;
+  plant: string;
+  itemCount: number;
+  totalValue: number;
+  requestedBy: string;
+  requestedDepartment: string;
+  createdAt: string;
+  timePending: string;
+  requestedDeliveryDate: string;
+  status: WorkflowStatus;
+  rejectReason?: string;
+  materialLines: TaskMaterialLine[];
+  timeline: WorkflowStep[];
+}
+

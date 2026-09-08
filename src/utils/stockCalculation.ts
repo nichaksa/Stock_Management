@@ -176,3 +176,142 @@ function formatChartDate(isoString: string): string {
     return isoString;
   }
 }
+
+/**
+ * Calculates the exact cumulative stock quantity for a material at any target DateTime.
+ * Uses all historical transactions created on or before targetDateTimeStr.
+ */
+export function getStockAtDateTime(
+  materialId: string,
+  transactions: StockTransaction[],
+  targetDateTimeStr: string
+): number {
+  const targetTime = new Date(targetDateTimeStr).getTime();
+  
+  const priorTransactions = transactions
+    .filter(t => t.materialId === materialId && new Date(t.createdAt).getTime() <= targetTime)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  if (priorTransactions.length === 0) {
+    return 0;
+  }
+
+  return priorTransactions[priorTransactions.length - 1].balanceAfter;
+}
+
+export type ChartGranularity = 'Daily' | 'Monthly' | 'Yearly';
+
+export interface MovementGranularPoint {
+  periodKey: string;
+  periodLabel: string;
+  grQty: number;
+  giQty: number;
+  grValue: number;
+  giValue: number;
+  netQty: number;
+  netValue: number;
+}
+
+/**
+ * Aggregates GR and GI movements within a DateTime range into Daily, Monthly, or Yearly buckets.
+ */
+export function getMovementTrendGranularData(
+  transactions: StockTransaction[],
+  startDateTimeStr: string,
+  endDateTimeStr: string,
+  granularity: ChartGranularity,
+  selectedPlant: string = 'All Plants'
+): MovementGranularPoint[] {
+  const startTime = new Date(startDateTimeStr).getTime();
+  const endTime = new Date(endDateTimeStr).getTime();
+
+  const inRangeTx = transactions.filter(t => {
+    if (selectedPlant !== 'All Plants' && t.plant !== selectedPlant) return false;
+    const tTime = new Date(t.createdAt).getTime();
+    return tTime >= startTime && tTime <= endTime;
+  });
+
+  const buckets: Record<string, {
+    periodLabel: string;
+    grQty: number;
+    giQty: number;
+    grValue: number;
+    giValue: number;
+    sortTime: number;
+  }> = {};
+
+  inRangeTx.forEach(tx => {
+    const d = new Date(tx.createdAt);
+    let key = '';
+    let label = '';
+    let sortTime = 0;
+
+    if (granularity === 'Daily') {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      key = `${year}-${month}-${day}`;
+      label = `${day} ${d.toLocaleString('en-US', { month: 'short' })}`;
+      sortTime = new Date(year, d.getMonth(), d.getDate()).getTime();
+    } else if (granularity === 'Monthly') {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      key = `${year}-${month}`;
+      label = `${d.toLocaleString('en-US', { month: 'short' })} ${year}`;
+      sortTime = new Date(year, d.getMonth(), 1).getTime();
+    } else {
+      // Yearly
+      const year = d.getFullYear();
+      key = `${year}`;
+      label = `${year}`;
+      sortTime = new Date(year, 0, 1).getTime();
+    }
+
+    if (!buckets[key]) {
+      buckets[key] = {
+        periodLabel: label,
+        grQty: 0,
+        giQty: 0,
+        grValue: 0,
+        giValue: 0,
+        sortTime,
+      };
+    }
+
+    const price = tx.pricePerUnit || 0;
+    if (tx.transactionType === 'GR' || tx.transactionType === 'OPENING') {
+      const qty = Math.abs(tx.quantity);
+      buckets[key].grQty += qty;
+      buckets[key].grValue += tx.totalPrice || qty * price;
+    } else if (tx.transactionType === 'GI') {
+      const qty = Math.abs(tx.quantity);
+      buckets[key].giQty += qty;
+      buckets[key].giValue += tx.totalPrice || qty * price;
+    } else if (tx.transactionType === 'ADJUSTMENT') {
+      if (tx.quantity > 0) {
+        buckets[key].grQty += tx.quantity;
+        buckets[key].grValue += tx.totalPrice || tx.quantity * price;
+      } else if (tx.quantity < 0) {
+        const qty = Math.abs(tx.quantity);
+        buckets[key].giQty += qty;
+        buckets[key].giValue += tx.totalPrice || qty * price;
+      }
+    }
+  });
+
+  const sortedPoints = Object.entries(buckets)
+    .sort((a, b) => a[1].sortTime - b[1].sortTime)
+    .map(([key, data]) => ({
+      periodKey: key,
+      periodLabel: data.periodLabel,
+      grQty: Math.round(data.grQty * 100) / 100,
+      giQty: Math.round(data.giQty * 100) / 100,
+      grValue: Math.round(data.grValue * 100) / 100,
+      giValue: Math.round(data.giValue * 100) / 100,
+      netQty: Math.round((data.grQty - data.giQty) * 100) / 100,
+      netValue: Math.round((data.grValue - data.giValue) * 100) / 100,
+    }));
+
+  return sortedPoints;
+}
+

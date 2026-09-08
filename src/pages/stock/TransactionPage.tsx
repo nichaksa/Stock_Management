@@ -33,10 +33,38 @@ export const TransactionPage: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('ALL');
   const [selectedUser, setSelectedUser] = useState('ALL');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const [sortColumn, setSortColumn] = useState<string | null>('createdAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const [selectedTransaction, setSelectedTransaction] = useState<StockTransaction | null>(null);
+
+  const handleDateRangeChange = (range: DateRange) => {
+    setDateRange(range);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
+
+  const handlePlantChange = (val: string) => {
+    setSelectedPlant(val);
+    setCurrentPage(1);
+  };
+
+  const handleTypeChange = (val: string) => {
+    setSelectedType(val);
+    setCurrentPage(1);
+  };
+
+  const handleUserChange = (val: string) => {
+    setSelectedUser(val);
+    setCurrentPage(1);
+  };
 
   // Extract unique users
   const uniqueUsers = useMemo(() => {
@@ -131,6 +159,12 @@ export const TransactionPage: React.FC = () => {
     addToast('Transactions exported to CSV', 'success');
   };
 
+  // Paginated slice
+  const paginatedTransactions = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedTransactions.slice(startIndex, startIndex + pageSize);
+  }, [sortedTransactions, currentPage, pageSize]);
+
   // Table columns
   const tableColumns: Column<StockTransaction>[] = [
     {
@@ -159,9 +193,10 @@ export const TransactionPage: React.FC = () => {
       id: 'plant',
       header: t('plant'),
       sortable: true,
-      className: 'w-24',
+      align: 'left',
+      className: 'w-[120px] min-w-[120px] max-w-[120px] px-4 whitespace-nowrap',
       accessor: (tx) => (
-        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-app-bg dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder text-app-text dark:text-app-darkText">
+        <span className="inline-flex items-center px-2 py-1 rounded-[6px] bg-[#F4F6F8] dark:bg-slate-800 text-[#344054] dark:text-slate-200 text-xs font-medium whitespace-nowrap tracking-wide select-none">
           {tx.plant}
         </span>
       ),
@@ -295,13 +330,13 @@ export const TransactionPage: React.FC = () => {
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5 flex-1">
               {/* Date Range Picker */}
-              <DateRangePicker value={dateRange} onChange={setDateRange} />
+              <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
 
               {/* Plant Filter */}
               <FilterSelect
                 label={t('plant_filter')}
                 value={selectedPlant}
-                onChange={setSelectedPlant}
+                onChange={handlePlantChange}
                 prefixIcon={<Building2 className="w-3.5 h-3.5" />}
                 options={[
                   { value: 'All Plants', label: t('all_plants') },
@@ -316,7 +351,7 @@ export const TransactionPage: React.FC = () => {
               <FilterSelect
                 label="Type"
                 value={selectedType}
-                onChange={setSelectedType}
+                onChange={handleTypeChange}
                 prefixIcon={<Filter className="w-3.5 h-3.5" />}
                 options={[
                   { value: 'ALL', label: 'All Types' },
@@ -332,7 +367,7 @@ export const TransactionPage: React.FC = () => {
               <FilterSelect
                 label="User"
                 value={selectedUser}
-                onChange={setSelectedUser}
+                onChange={handleUserChange}
                 prefixIcon={<UserIcon className="w-3.5 h-3.5" />}
                 options={[
                   { value: 'ALL', label: 'All Users' },
@@ -345,7 +380,7 @@ export const TransactionPage: React.FC = () => {
             {/* Search */}
             <SearchInput
               value={searchQuery}
-              onChange={setSearchQuery}
+              onChange={handleSearchChange}
               placeholder="Search Doc#, Code, Batch, S/N, Ref..."
               className="w-full lg:w-72"
             />
@@ -354,7 +389,7 @@ export const TransactionPage: React.FC = () => {
 
         {/* TRANSACTIONS TABLE */}
         <DataTable
-          data={sortedTransactions}
+          data={paginatedTransactions}
           columns={tableColumns}
           keyExtractor={(tx) => tx.id}
           onRowClick={(tx) => setSelectedTransaction(tx)}
@@ -364,6 +399,14 @@ export const TransactionPage: React.FC = () => {
           emptyTitle="No Transactions Found"
           emptyDescription="No stock movements match the specified date range or filter criteria."
           emptyType="transactions"
+          pagination={{
+            currentPage,
+            pageSize,
+            totalItems: sortedTransactions.length,
+            onPageChange: setCurrentPage,
+            onPageSizeChange: setPageSize,
+            pageSizeOptions: [10, 20, 50, 100],
+          }}
         />
       </div>
 

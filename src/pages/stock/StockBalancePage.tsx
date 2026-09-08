@@ -42,10 +42,23 @@ export const StockBalancePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlant, setSelectedPlant] = useState('All Plants');
   const [statusFilter, setStatusFilter] = useState<StockStatus | 'ALL'>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Sorting
   const [sortColumn, setSortColumn] = useState<string | null>('quantity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Reset pagination on search or plant change
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
+
+  const handlePlantChange = (val: string) => {
+    setSelectedPlant(val);
+    setCurrentPage(1);
+  };
 
   // Drawers
   const [grMaterial, setGrMaterial] = useState<Material | null>(null);
@@ -183,7 +196,14 @@ export const StockBalancePage: React.FC = () => {
     } else {
       setStatusFilter(status);
     }
+    setCurrentPage(1);
   };
+
+  // Paginated slice
+  const paginatedMaterials = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedMaterials.slice(startIndex, startIndex + pageSize);
+  }, [sortedMaterials, currentPage, pageSize]);
 
   // Table columns definition
   const tableColumns: Column<MaterialWithStock>[] = [
@@ -216,9 +236,10 @@ export const StockBalancePage: React.FC = () => {
       id: 'plant',
       header: t('plant'),
       sortable: true,
-      className: 'w-24',
+      align: 'left',
+      className: 'w-[120px] min-w-[120px] max-w-[120px] px-4 whitespace-nowrap',
       accessor: (m) => (
-        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-app-bg dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder text-app-text dark:text-app-darkText">
+        <span className="inline-flex items-center px-2 py-1 rounded-[6px] bg-[#F4F6F8] dark:bg-slate-800 text-[#344054] dark:text-slate-200 text-xs font-medium whitespace-nowrap tracking-wide select-none">
           {m.plant}
         </span>
       ),
@@ -575,7 +596,7 @@ export const StockBalancePage: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto flex-1 max-w-2xl">
             <SearchInput
               value={searchQuery}
-              onChange={setSearchQuery}
+              onChange={handleSearchChange}
               placeholder={t('search_material_placeholder')}
               className="w-full sm:w-80"
             />
@@ -583,7 +604,7 @@ export const StockBalancePage: React.FC = () => {
             <FilterSelect
               label={t('plant_filter')}
               value={selectedPlant}
-              onChange={setSelectedPlant}
+              onChange={handlePlantChange}
               prefixIcon={<Building2 className="w-3.5 h-3.5" />}
               options={[
                 { value: 'All Plants', label: t('all_plants') },
@@ -601,7 +622,10 @@ export const StockBalancePage: React.FC = () => {
               <StatusBadge status={statusFilter} size="sm" />
               <button
                 type="button"
-                onClick={() => setStatusFilter('ALL')}
+                onClick={() => {
+                  setStatusFilter('ALL');
+                  setCurrentPage(1);
+                }}
                 className="text-[11px] text-brand-blue font-semibold hover:underline ml-1"
               >
                 Clear filter
@@ -612,7 +636,7 @@ export const StockBalancePage: React.FC = () => {
 
         {/* STOCK BALANCE TABLE */}
         <DataTable
-          data={sortedMaterials}
+          data={paginatedMaterials}
           columns={tableColumns}
           keyExtractor={(m) => m.id}
           onRowClick={(m) => {
@@ -625,6 +649,14 @@ export const StockBalancePage: React.FC = () => {
           emptyTitle="No Stock Balance Records"
           emptyDescription="No materials match your active search and status filter."
           emptyType="materials"
+          pagination={{
+            currentPage,
+            pageSize,
+            totalItems: sortedMaterials.length,
+            onPageChange: setCurrentPage,
+            onPageSizeChange: setPageSize,
+            pageSizeOptions: [10, 20, 50, 100],
+          }}
         />
       </div>
 

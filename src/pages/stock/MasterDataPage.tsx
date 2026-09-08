@@ -63,6 +63,9 @@ export const MasterDataPage: React.FC = () => {
     ];
   });
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   // Sorting state
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -75,6 +78,17 @@ export const MasterDataPage: React.FC = () => {
 
   const canCreate = hasPermission('MASTER_CREATE');
   const canEdit = hasPermission('MASTER_EDIT');
+
+  // Reset to page 1 when search or plant changes
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
+
+  const handlePlantChange = (val: string) => {
+    setSelectedPlant(val);
+    setCurrentPage(1);
+  };
 
   // Filter materials in real-time
   const filteredMaterials = useMemo(() => {
@@ -113,6 +127,7 @@ export const MasterDataPage: React.FC = () => {
       setSortColumn(null);
       setSortDirection(null);
     }
+    setCurrentPage(1);
   };
 
   // Sort materials
@@ -136,6 +151,12 @@ export const MasterDataPage: React.FC = () => {
       return 0;
     });
   }, [filteredMaterials, sortColumn, sortDirection]);
+
+  // Paginated slice
+  const paginatedMaterials = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedMaterials.slice(startIndex, startIndex + pageSize);
+  }, [sortedMaterials, currentPage, pageSize]);
 
   // Actions
   const handleOpenAddModal = () => {
@@ -171,15 +192,16 @@ export const MasterDataPage: React.FC = () => {
   const tableColumns: Column<Material>[] = useMemo(() => {
     const cols: Column<Material>[] = [];
 
-    // 1. Plant (Required, First, Non-sortable)
+    // 1. Plant (Required, First, Non-sortable) - 120px, left aligned, clean enterprise soft badge
     if (visibleColIds.includes('plant')) {
       cols.push({
         id: 'plant',
         header: t('plant'),
         sortable: false,
-        className: 'w-24',
+        align: 'left',
+        className: 'w-[120px] min-w-[120px] max-w-[120px] px-4 whitespace-nowrap',
         accessor: (m) => (
-          <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-app-bg dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder text-app-text dark:text-app-darkText">
+          <span className="inline-flex items-center px-2 py-1 rounded-[6px] bg-[#F4F6F8] dark:bg-slate-800 text-[#344054] dark:text-slate-200 text-xs font-medium whitespace-nowrap tracking-wide select-none">
             {m.plant}
           </span>
         ),
@@ -428,7 +450,7 @@ export const MasterDataPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto flex-1 max-w-2xl">
             <SearchInput
               value={searchQuery}
-              onChange={setSearchQuery}
+              onChange={handleSearchChange}
               placeholder={t('search_material_placeholder')}
               className="w-full sm:w-80"
             />
@@ -436,7 +458,7 @@ export const MasterDataPage: React.FC = () => {
             <FilterSelect
               label={t('plant_filter')}
               value={selectedPlant}
-              onChange={setSelectedPlant}
+              onChange={handlePlantChange}
               prefixIcon={<Building2 className="w-3.5 h-3.5" />}
               options={[
                 { value: 'All Plants', label: t('all_plants') },
@@ -459,7 +481,7 @@ export const MasterDataPage: React.FC = () => {
 
         {/* Master Data Table */}
         <DataTable
-          data={sortedMaterials}
+          data={paginatedMaterials}
           columns={tableColumns}
           keyExtractor={(m) => m.id}
           onRowClick={handleRowClick}
@@ -470,6 +492,13 @@ export const MasterDataPage: React.FC = () => {
           emptyTitle="No Materials Found"
           emptyDescription="No spare parts match your active filters or search terms."
           emptyType="materials"
+          pagination={{
+            currentPage,
+            pageSize,
+            totalItems: sortedMaterials.length,
+            onPageChange: setCurrentPage,
+            onPageSizeChange: setPageSize,
+          }}
         />
       </div>
 

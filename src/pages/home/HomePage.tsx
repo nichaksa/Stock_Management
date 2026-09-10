@@ -155,13 +155,12 @@ export const HomePage: React.FC = () => {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {["Dashboard", "Create Job", "Follow Up", "My Job", "PM Master", "SparePart"].map((action, i) => (
-                <Link
+                <span
                   key={i}
-                  to="/modules/m-pros"
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary hover:text-brand-blue hover:bg-brand-softBlue dark:hover:bg-blue-950/40 border border-app-border dark:border-app-darkBorder transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
                 >
                   {action}
-                </Link>
+                </span>
               ))}
             </div>
           </div>
@@ -183,13 +182,12 @@ export const HomePage: React.FC = () => {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {["Dashboard", "WorkPermit"].map((action, i) => (
-                <Link
+                <span
                   key={i}
-                  to="/modules/work-permit"
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary hover:text-brand-blue hover:bg-brand-softBlue dark:hover:bg-blue-950/40 border border-app-border dark:border-app-darkBorder transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
                 >
                   {action}
-                </Link>
+                </span>
               ))}
             </div>
           </div>
@@ -211,13 +209,12 @@ export const HomePage: React.FC = () => {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {["Dashboard", "Unsafe"].map((action, i) => (
-                <Link
+                <span
                   key={i}
-                  to="/modules/unsafe"
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary hover:text-brand-blue hover:bg-brand-softBlue dark:hover:bg-blue-950/40 border border-app-border dark:border-app-darkBorder transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
                 >
                   {action}
-                </Link>
+                </span>
               ))}
             </div>
           </div>
@@ -239,13 +236,12 @@ export const HomePage: React.FC = () => {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {["Z-SENSOR", "Data Preparation", "Model Deployment", "Alarm History"].map((action, i) => (
-                <Link
+                <span
                   key={i}
-                  to={action === "Z-SENSOR" ? "/modules/z-sensor" : "/modules/z-pap"}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary hover:text-brand-blue hover:bg-brand-softBlue dark:hover:bg-blue-950/40 border border-app-border dark:border-app-darkBorder transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
                 >
                   {action}
-                </Link>
+                </span>
               ))}
             </div>
           </div>

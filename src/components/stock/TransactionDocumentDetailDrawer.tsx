@@ -55,7 +55,7 @@ export const TransactionDocumentDetailDrawer: React.FC<TransactionDocumentDetail
             <div><span class="label">Plant:</span> ${doc.plant}</div>
             <div><span class="label">Created By:</span> ${doc.createdBy}</div>
             <div><span class="label">Reference:</span> ${doc.referenceNumber || '-'}</div>
-            <div><span class="label">PR ID:</span> ${doc.prId || '-'}</div>
+            <div><span class="label">${doc.picklist ? 'PickList' : 'PR ID'}:</span> ${doc.picklist || doc.prId || '-'}</div>
             <div><span class="label">Status:</span> ${doc.status}</div>
             <div><span class="label">Total Items:</span> ${doc.items.length}</div>
           </div>
@@ -183,10 +183,17 @@ export const TransactionDocumentDetailDrawer: React.FC<TransactionDocumentDetail
               <span className="text-app-muted block text-[11px]">Reference / PO No.</span>
               <span className="font-mono text-app-text dark:text-app-darkText">{doc.referenceNumber || '-'}</span>
             </div>
-            <div>
-              <span className="text-app-muted block text-[11px]">PR ID</span>
-              <span className="font-mono text-app-text dark:text-app-darkText">{doc.prId || '-'}</span>
-            </div>
+            {doc.picklist ? (
+              <div>
+                <span className="text-app-muted block text-[11px]">PickList</span>
+                <span className="font-mono text-app-text dark:text-app-darkText">{doc.picklist}</span>
+              </div>
+            ) : (
+              <div>
+                <span className="text-app-muted block text-[11px]">PR ID</span>
+                <span className="font-mono text-app-text dark:text-app-darkText">{doc.prId || '-'}</span>
+              </div>
+            )}
           </div>
 
           {doc.comment && (

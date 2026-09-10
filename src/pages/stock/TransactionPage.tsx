@@ -121,6 +121,7 @@ export const TransactionPage: React.FC = () => {
           doc.transactionNumber.toLowerCase().includes(query) ||
           doc.referenceNumber?.toLowerCase().includes(query) ||
           doc.prId?.toLowerCase().includes(query) ||
+          doc.picklist?.toLowerCase().includes(query) ||
           doc.createdBy.toLowerCase().includes(query) ||
           doc.comment?.toLowerCase().includes(query);
 
@@ -236,7 +237,7 @@ export const TransactionPage: React.FC = () => {
     },
     {
       id: 'referenceNumber',
-      header: isTh ? 'เลขอ้างอิง / PR' : 'Reference / PR',
+      header: isTh ? 'เลขอ้างอิง / PR / PL' : 'Reference / PR / PL',
       sortable: true,
       className: 'min-w-[140px]',
       accessor: (doc) => (
@@ -251,7 +252,12 @@ export const TransactionPage: React.FC = () => {
               PR: {doc.prId}
             </span>
           )}
-          {!doc.referenceNumber && !doc.prId && (
+          {doc.picklist && (
+            <span className="text-[11px] text-app-muted block">
+              PL: {doc.picklist}
+            </span>
+          )}
+          {!doc.referenceNumber && !doc.prId && !doc.picklist && (
             <span className="text-app-muted">-</span>
           )}
         </div>
@@ -437,13 +443,11 @@ export const TransactionPage: React.FC = () => {
                 onChange={handleTypeChange}
                 prefixIcon={<Filter className="w-3.5 h-3.5" />}
                 options={[
-                  { value: 'ALL', label: 'All Document Types' },
-                  { value: 'GR', label: 'Goods Receipt (GR)' },
-                  { value: 'GI', label: 'Goods Issue (GI)' },
-                  { value: 'OPENING', label: 'Opening Balance' },
-                  { value: 'ADJUSTMENT', label: 'Adjustment' },
+                  { value: 'ALL', label: 'All Types' },
+                  { value: 'GR', label: 'GR' },
+                  { value: 'GI', label: 'GI' },
                 ]}
-                className="w-44"
+                className="w-36"
               />
 
               {/* User Filter */}

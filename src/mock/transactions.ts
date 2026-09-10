@@ -25,7 +25,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-001-02",
-    documentNo: "GI-260825-001",
+    documentNo: "GI-0002",
+    transactionNumber: "GI-0002",
     plant: "DEMO",
     materialId: "mat-001",
     materialCode: "C203001000",
@@ -47,7 +48,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-001-03",
-    documentNo: "GR-260902-001",
+    documentNo: "GR-0002",
+    transactionNumber: "GR-0002",
     plant: "DEMO",
     materialId: "mat-001",
     materialCode: "C203001000",
@@ -68,7 +70,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-001-04",
-    documentNo: "GI-260904-001",
+    documentNo: "GI-0006",
+    transactionNumber: "GI-0006",
     plant: "DEMO",
     materialId: "mat-001",
     materialCode: "C203001000",
@@ -90,7 +93,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-001-05",
-    documentNo: "GR-260906-001",
+    documentNo: "GR-0004",
+    transactionNumber: "GR-0004",
     plant: "DEMO",
     materialId: "mat-001",
     materialCode: "C203001000",
@@ -131,7 +135,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-002-02",
-    documentNo: "GI-260828-002",
+    documentNo: "GI-0003",
+    transactionNumber: "GI-0003",
     plant: "DEMO",
     materialId: "mat-002",
     materialCode: "C203001001",
@@ -170,7 +175,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-003-02",
-    documentNo: "GI-260825-003",
+    documentNo: "GI-0001",
+    transactionNumber: "GI-0001",
     plant: "PLANT-01",
     materialId: "mat-003",
     materialCode: "C203001003",
@@ -209,7 +215,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-004-02",
-    documentNo: "GI-260901-004",
+    documentNo: "GI-0005",
+    transactionNumber: "GI-0005",
     plant: "PLANT-01",
     materialId: "mat-004",
     materialCode: "C203001004",
@@ -249,7 +256,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-005-02",
-    documentNo: "GI-260904-005",
+    documentNo: "GI-0007",
+    transactionNumber: "GI-0007",
     plant: "PLANT-02",
     materialId: "mat-005",
     materialCode: "C203001010",
@@ -288,7 +296,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-006-02",
-    documentNo: "GR-260906-006",
+    documentNo: "GR-0003",
+    transactionNumber: "GR-0003",
     plant: "DEMO",
     materialId: "mat-006",
     materialCode: "C204001005",
@@ -307,7 +316,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-006-03",
-    documentNo: "GI-260906-006",
+    documentNo: "GI-0010",
+    transactionNumber: "GI-0010",
     plant: "DEMO",
     materialId: "mat-006",
     materialCode: "C204001005",
@@ -346,7 +356,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-008-02",
-    documentNo: "GI-260905-008",
+    documentNo: "GI-0009",
+    transactionNumber: "GI-0009",
     plant: "DEMO",
     materialId: "mat-008",
     materialCode: "C205001001",
@@ -385,7 +396,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-012-02",
-    documentNo: "GI-260904-012",
+    documentNo: "GI-0008",
+    transactionNumber: "GI-0008",
     plant: "DEMO",
     materialId: "mat-012",
     materialCode: "C207001001",
@@ -484,7 +496,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-021-02",
-    documentNo: "GR-260907-021",
+    documentNo: "GR-0005",
+    transactionNumber: "GR-0005",
     plant: "DEMO",
     materialId: "mat-021",
     materialCode: "C212001001",
@@ -524,7 +537,8 @@ export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   },
   {
     id: "tx-022-02",
-    documentNo: "GI-260906-022",
+    documentNo: "GI-0011",
+    transactionNumber: "GI-0011",
     plant: "PLANT-01",
     materialId: "mat-022",
     materialCode: "C212001002",

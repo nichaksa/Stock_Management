@@ -13,6 +13,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useToast } from '../../context/ToastContext';
 import { exportMasterDataToCsv } from '../../utils/export';
 import { formatDateTime } from '../../utils/dateRange';
+import { getCurrentStock } from '../../utils/stockCalculation';
 import {
   Plus,
   Download,
@@ -26,6 +27,7 @@ import {
 const MASTER_COLUMNS_DEF: ColumnDefinition[] = [
   { id: 'plant', label: 'Plant', required: true },
   { id: 'materialDetails', label: 'Material Details', required: true },
+  { id: 'quantity', label: 'Quantity' },
   { id: 'materialType', label: 'Type' },
   { id: 'unit', label: 'Unit' },
   { id: 'standardPrice', label: 'Price' },
@@ -50,6 +52,7 @@ export const MasterDataPage: React.FC = () => {
     return [
       'plant',
       'materialDetails',
+      'quantity',
       'materialType',
       'unit',
       'standardPrice',
@@ -138,7 +141,10 @@ export const MasterDataPage: React.FC = () => {
       let valA: any = (a as any)[sortColumn];
       let valB: any = (b as any)[sortColumn];
 
-      if (sortColumn === 'materialDetails') {
+      if (sortColumn === 'quantity') {
+        valA = getCurrentStock(a.id, transactions);
+        valB = getCurrentStock(b.id, transactions);
+      } else if (sortColumn === 'materialDetails') {
         valA = a.description.toLowerCase();
         valB = b.description.toLowerCase();
       } else if (typeof valA === 'string') {
@@ -150,7 +156,7 @@ export const MasterDataPage: React.FC = () => {
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filteredMaterials, sortColumn, sortDirection]);
+  }, [filteredMaterials, sortColumn, sortDirection, transactions]);
 
   // Paginated slice
   const paginatedMaterials = useMemo(() => {
@@ -234,6 +240,38 @@ export const MasterDataPage: React.FC = () => {
             </div>
           </div>
         ),
+      });
+    }
+
+    // 3. Quantity (Current Stock in System)
+    if (visibleColIds.includes('quantity')) {
+      cols.push({
+        id: 'quantity',
+        header: t('quantity'),
+        sortable: true,
+        align: 'right',
+        className: 'min-w-[110px]',
+        accessor: (m) => {
+          const currentStock = getCurrentStock(m.id, transactions);
+          return (
+            <div className="text-right">
+              <span
+                className={`font-mono text-xs sm:text-sm font-bold ${
+                  currentStock === 0
+                    ? 'text-gi'
+                    : currentStock <= m.min
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-app-text dark:text-app-darkText'
+                }`}
+              >
+                {currentStock.toLocaleString()}
+              </span>{' '}
+              <span className="text-[11px] font-normal text-app-muted">
+                {m.unit}
+              </span>
+            </div>
+          );
+        },
       });
     }
 
@@ -414,7 +452,7 @@ export const MasterDataPage: React.FC = () => {
     });
 
     return cols;
-  }, [visibleColIds, t, canEdit]);
+  }, [visibleColIds, t, canEdit, transactions]);
 
   return (
     <PageLayout

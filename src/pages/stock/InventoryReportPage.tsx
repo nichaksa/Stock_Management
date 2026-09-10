@@ -6,6 +6,7 @@ import { MovementTrendChart } from '../../components/stock/MovementTrendChart';
 import { InventoryByPlantWidget, PlantInventorySummary } from '../../components/stock/InventoryByPlantWidget';
 import { InventoryCompositionDonut, TypeCompositionItem } from '../../components/stock/InventoryCompositionDonut';
 import { MovementByPlantChart, PlantMovementComparison } from '../../components/stock/MovementByPlantChart';
+import { ZoneMapWidget, ZoneMapItem } from '../../components/stock/ZoneMapWidget';
 import { PendingTasksPanel } from '../../components/stock/PendingTasksPanel';
 import { RecentMovementsTable } from '../../components/stock/RecentMovementsTable';
 import { MaterialDetailDrawer } from '../../components/stock/MaterialDetailDrawer';
@@ -216,9 +217,13 @@ export const InventoryReportPage: React.FC = () => {
     });
   }, [materials, transactions, endDateTimeStr, kpiMetrics, globalFilter.viewMode]);
 
-  // 5. GR vs GI by Plant Comparison Chart Data
+  // 5. Goods Issue vs Goods Receipt by FL (Plant) Comparison Chart Data
   const plantMovementData: PlantMovementComparison[] = useMemo(() => {
-    const plants = ['DEMO', 'PLANT-01', 'PLANT-02'];
+    const allPlants = ['DEMO', 'PLANT-01', 'PLANT-02'];
+    const targetPlants = globalFilter.selectedPlant === 'All Plants'
+      ? allPlants
+      : allPlants.filter(p => p === globalFilter.selectedPlant);
+
     const startTime = new Date(startDateTimeStr).getTime();
     const endTime = new Date(endDateTimeStr).getTime();
 
@@ -227,7 +232,7 @@ export const InventoryReportPage: React.FC = () => {
       return tTime >= startTime && tTime <= endTime;
     });
 
-    return plants.map(plantName => {
+    return targetPlants.map(plantName => {
       const plantTx = inRangeTx.filter(t => t.plant === plantName);
       let grQty = 0;
       let giQty = 0;
@@ -264,9 +269,44 @@ export const InventoryReportPage: React.FC = () => {
         giValue,
       };
     });
-  }, [transactions, startDateTimeStr, endDateTimeStr]);
+  }, [transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant]);
 
-  // 6. Recent Movements within Filter Range
+  // 6. Zone Map Data (Grouped by Storage Location / SLoc)
+  const zoneMapData: ZoneMapItem[] = useMemo(() => {
+    const map: Record<string, { itemCount: number; totalQuantity: number; totalValue: number }> = {};
+    const totalValAll = kpiMetrics.totalInventoryVal || 1;
+    const totalQtyAll = kpiMetrics.totalInventoryQty || 1;
+
+    materialsWithStockAtEndDate.forEach(m => {
+      const sloc = (m.storageLocation && m.storageLocation.trim()) || 'Unassigned';
+      if (!map[sloc]) {
+        map[sloc] = { itemCount: 0, totalQuantity: 0, totalValue: 0 };
+      }
+      map[sloc].itemCount += 1;
+      map[sloc].totalQuantity += m.currentStock;
+      map[sloc].totalValue += m.totalValue;
+    });
+
+    return Object.entries(map).map(([sloc, stats]) => {
+      const percentage = globalFilter.viewMode === 'PRICE'
+        ? (stats.totalValue / totalValAll) * 100
+        : (stats.totalQuantity / totalQtyAll) * 100;
+
+      return {
+        sloc,
+        itemCount: stats.itemCount,
+        totalQuantity: stats.totalQuantity,
+        totalValue: stats.totalValue,
+        percentage: Math.min(100, Math.max(0, percentage)),
+      };
+    }).sort((a, b) => {
+      if (a.sloc === 'Unassigned') return 1;
+      if (b.sloc === 'Unassigned') return -1;
+      return b.percentage - a.percentage;
+    });
+  }, [materialsWithStockAtEndDate, kpiMetrics, globalFilter.viewMode]);
+
+  // 7. Recent Movements within Filter Range
   const filteredRecentMovements = useMemo(() => {
     const startTime = new Date(startDateTimeStr).getTime();
     const endTime = new Date(endDateTimeStr).getTime();
@@ -282,7 +322,7 @@ export const InventoryReportPage: React.FC = () => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant]);
 
-  // 7. Filtered Pending Tasks
+  // 8. Filtered Pending Tasks
   const filteredPendingTasks = useMemo(() => {
     if (globalFilter.selectedPlant === 'All Plants') return pendingTasks;
     return pendingTasks.filter(t => t.plant === globalFilter.selectedPlant);
@@ -413,7 +453,7 @@ export const InventoryReportPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 4. SECONDARY ANALYTICS ROW: INVENTORY BY PLANT + GR/GI BY PLANT */}
+        {/* 4. SECONDARY ANALYTICS ROW: INVENTORY BY PLANT + GOODS ISSUE VS GOODS RECEIPT BY FL */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <InventoryByPlantWidget
             plantSummaries={plantSummaries}
@@ -426,14 +466,23 @@ export const InventoryReportPage: React.FC = () => {
           />
         </div>
 
-        {/* 5. WORKFLOW & TRANSACTION ROW: PENDING TASKS PANEL */}
+        {/* 5. ZONE MAP SECTION (STORAGE LOCATION BREAKDOWN) */}
+        <ZoneMapWidget
+          zones={zoneMapData}
+          viewMode={globalFilter.viewMode}
+          totalItemsCount={kpiMetrics.totalItemsCount}
+          totalInventoryQty={kpiMetrics.totalInventoryQty}
+          totalInventoryVal={kpiMetrics.totalInventoryVal}
+        />
+
+        {/* 6. WORKFLOW & TRANSACTION ROW: PENDING TASKS PANEL */}
         <PendingTasksPanel
           tasks={filteredPendingTasks}
           onAdvanceWorkflow={handleAdvanceWorkflow}
           onRejectWorkflow={handleRejectWorkflow}
         />
 
-        {/* 6. RECENT MOVEMENTS TABLE (WITH SEARCH & 10/20/50/100 PAGINATION) */}
+        {/* 7. RECENT MOVEMENTS TABLE (WITH FINDER & 10/20/50/100 PAGINATION) */}
         <RecentMovementsTable
           transactions={filteredRecentMovements}
           onRowClick={(tx) => setSelectedTransaction(tx)}

@@ -1,4 +1,64 @@
-import { Material, StockTransaction, StockStatus } from '../types/stock';
+import { Material, StockTransaction, StockStatus, TransactionDocument } from '../types/stock';
+
+/**
+ * Checks if a PR ID already exists in any recorded transaction documents or stock transactions.
+ * Case-insensitive & trimmed across both GR and GI.
+ */
+export function checkDuplicatePrId(
+  prId: string,
+  documents: TransactionDocument[] = [],
+  transactions: StockTransaction[] = []
+): boolean {
+  const clean = prId.trim().toLowerCase();
+  if (!clean) return false;
+
+  const inDocs = documents.some(doc => {
+    if (doc.prId && doc.prId.trim().toLowerCase() === clean) return true;
+    if (doc.picklist && doc.picklist.trim().toLowerCase() === clean) return true;
+    if (doc.referenceNumber && doc.referenceNumber.trim().toLowerCase() === clean) return true;
+    return false;
+  });
+  if (inDocs) return true;
+
+  const inTx = transactions.some(tx => {
+    if (tx.picklist && tx.picklist.trim().toLowerCase() === clean) return true;
+    if (tx.referenceNo && tx.referenceNo.trim().toLowerCase() === clean) return true;
+    if (tx.referenceNumber && tx.referenceNumber.trim().toLowerCase() === clean) return true;
+    return false;
+  });
+
+  return inTx;
+}
+
+/**
+ * Checks if a PickList number already exists in any recorded transaction documents or stock transactions.
+ * Case-insensitive & trimmed across both GR and GI.
+ */
+export function checkDuplicatePicklist(
+  picklist: string,
+  documents: TransactionDocument[] = [],
+  transactions: StockTransaction[] = []
+): boolean {
+  const clean = picklist.trim().toLowerCase();
+  if (!clean) return false;
+
+  const inDocs = documents.some(doc => {
+    if (doc.picklist && doc.picklist.trim().toLowerCase() === clean) return true;
+    if (doc.prId && doc.prId.trim().toLowerCase() === clean) return true;
+    if (doc.referenceNumber && doc.referenceNumber.trim().toLowerCase() === clean) return true;
+    return false;
+  });
+  if (inDocs) return true;
+
+  const inTx = transactions.some(tx => {
+    if (tx.picklist && tx.picklist.trim().toLowerCase() === clean) return true;
+    if (tx.referenceNo && tx.referenceNo.trim().toLowerCase() === clean) return true;
+    if (tx.referenceNumber && tx.referenceNumber.trim().toLowerCase() === clean) return true;
+    return false;
+  });
+
+  return inTx;
+}
 
 /**
  * Calculates current stock quantity for a material from all historical transactions.

@@ -9,7 +9,7 @@ import { AppRoutes } from './routes/AppRoutes';
 
 export const App: React.FC = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ThemeProvider>
         <LanguageProvider>
           <ToastProvider>

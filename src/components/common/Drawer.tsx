@@ -51,15 +51,15 @@ export const Drawer: React.FC<DrawerProps> = ({
           className={`pointer-events-auto w-screen ${widthClass} bg-white dark:bg-app-darkSurface border-l border-app-border dark:border-app-darkBorder shadow-2xl flex flex-col animate-slide-in-right h-full`}
         >
           {/* Header */}
-          <div className="px-6 py-4.5 border-b border-app-border dark:border-app-darkBorder flex items-center justify-between shrink-0 bg-white/95 dark:bg-app-darkSurface/95 backdrop-blur z-10">
-            <div className="min-w-0 pr-4">
+          <div className="px-6 sm:px-8 py-5 border-b border-app-border dark:border-app-darkBorder flex items-center justify-between shrink-0 bg-white/95 dark:bg-app-darkSurface/95 backdrop-blur z-10">
+            <div className="min-w-0 pr-4 space-y-1.5">
               {title && (
-                <h3 className="text-base font-semibold text-app-text dark:text-app-darkText truncate tracking-tight">
+                <h3 className="text-base sm:text-lg font-bold text-app-text dark:text-app-darkText truncate tracking-tight">
                   {title}
                 </h3>
               )}
               {subtitle && (
-                <p className="text-xs text-app-secondary dark:text-app-darkSecondary mt-0.5 truncate">
+                <p className="text-xs sm:text-sm text-app-secondary dark:text-app-darkSecondary leading-relaxed">
                   {subtitle}
                 </p>
               )}
@@ -67,14 +67,15 @@ export const Drawer: React.FC<DrawerProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-app-muted hover:text-app-text dark:hover:text-app-darkText hover:bg-app-bg dark:hover:bg-app-darkBorder transition-colors"
+              className="p-2 rounded-xl text-app-muted hover:text-app-text dark:hover:text-app-darkText hover:bg-app-bg dark:hover:bg-app-darkBorder transition-colors"
+              title="Close (Esc)"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* Body / Main Content Container */}
+          <div className="flex-1 overflow-y-auto px-6 sm:px-8 pt-7 pb-8">
             {children}
           </div>
 

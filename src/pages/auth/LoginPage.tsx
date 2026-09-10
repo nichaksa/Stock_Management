@@ -58,11 +58,8 @@ export const LoginPage: React.FC = () => {
             <p className="text-xs font-mono text-brand-blue uppercase tracking-widest mt-0.5">
               Stock Management OS
             </p>
-            <div className="mt-4">
-              <h2 className="text-lg font-semibold text-app-text dark:text-app-darkText">
-                {t('welcome_back')}
-              </h2>
-              <p className="text-xs text-app-secondary dark:text-app-darkSecondary mt-0.5">
+            <div className="mt-3">
+              <p className="text-xs text-app-secondary dark:text-app-darkSecondary">
                 {t('sign_in_desc')}
               </p>
             </div>

@@ -30,19 +30,45 @@ export const RecentMovementsTable: React.FC<RecentMovementsTableProps> = ({
     setCurrentPage(1);
   };
 
-  // Filter transactions by search query
+  // Filter transactions across ALL columns before pagination
   const filteredTransactions = useMemo(() => {
     if (!searchQuery.trim()) return transactions;
     const q = searchQuery.toLowerCase().trim();
 
     return transactions.filter(tx => {
+      const formattedDate = formatDateTime(tx.createdAt).toLowerCase();
+      const unitPriceStr = (tx.pricePerUnit ?? tx.price ?? 0).toString();
+      const totalPriceStr = (tx.totalPrice ?? Math.abs(tx.quantity) * (tx.pricePerUnit || 0)).toString();
+      const qtyStr = tx.quantity.toString();
+      const signedQtyStr = tx.quantity > 0 ? `+${tx.quantity}` : tx.quantity.toString();
+
       return (
-        tx.documentNo.toLowerCase().includes(q) ||
+        tx.transactionType.toLowerCase().includes(q) ||
         tx.materialCode.toLowerCase().includes(q) ||
+        tx.documentNo.toLowerCase().includes(q) ||
+        (tx.transactionNumber && tx.transactionNumber.toLowerCase().includes(q)) ||
+        (tx.description && tx.description.toLowerCase().includes(q)) ||
+        (tx.process && tx.process.toLowerCase().includes(q)) ||
+        (tx.type && tx.type.toLowerCase().includes(q)) ||
+        qtyStr.includes(q) ||
+        signedQtyStr.includes(q) ||
+        unitPriceStr.includes(q) ||
+        totalPriceStr.includes(q) ||
+        (tx.storageLocation && tx.storageLocation.toLowerCase().includes(q)) ||
+        (tx.storageBin && tx.storageBin.toLowerCase().includes(q)) ||
+        (tx.batchNo && tx.batchNo.toLowerCase().includes(q)) ||
+        (tx.batchNumber && tx.batchNumber.toLowerCase().includes(q)) ||
+        (tx.lotNo && tx.lotNo.toLowerCase().includes(q)) ||
+        (tx.lot && tx.lot.toLowerCase().includes(q)) ||
+        (tx.serialNo && tx.serialNo.toLowerCase().includes(q)) ||
+        (tx.serialNumber && tx.serialNumber.toLowerCase().includes(q)) ||
+        (tx.referenceNo && tx.referenceNo.toLowerCase().includes(q)) ||
+        (tx.referenceNumber && tx.referenceNumber.toLowerCase().includes(q)) ||
+        (tx.picklist && tx.picklist.toLowerCase().includes(q)) ||
         tx.createdBy.toLowerCase().includes(q) ||
-        tx.process?.toLowerCase().includes(q) ||
-        tx.batchNo?.toLowerCase().includes(q) ||
-        tx.comment?.toLowerCase().includes(q)
+        (tx.comment && tx.comment.toLowerCase().includes(q)) ||
+        formattedDate.includes(q) ||
+        tx.createdAt.toLowerCase().includes(q)
       );
     });
   }, [transactions, searchQuery]);
@@ -161,32 +187,33 @@ export const RecentMovementsTable: React.FC<RecentMovementsTableProps> = ({
           </div>
           <div>
             <h3 className="text-xs sm:text-sm font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-              {isTh ? 'ประวัติความเคลื่อนไหวล่าสุด' : 'Recent Movements & Ledger Log'}
+              {isTh ? 'Recent Movements' : 'Recent Movements'}
             </h3>
             <p className="text-[10px] sm:text-[11px] text-app-muted">
               {isTh
-                ? `รายการเคลื่อนไหวทั้งหมดในช่วงเวลาที่เลือก (${filteredTransactions.length} รายการ)`
-                : `Audited movements within the applied DateTime filter (${filteredTransactions.length} records)`}
+                ? `รายการเคลื่อนไหวทั้งหมด (${filteredTransactions.length} รายการ จากทั้งหมด ${transactions.length} รายการ)`
+                : `Audited movements within the applied filter (${filteredTransactions.length} of ${transactions.length} records)`}
             </p>
           </div>
         </div>
 
+        {/* SEARCH INPUT */}
         <SearchInput
           value={searchQuery}
           onChange={handleSearchChange}
-          placeholder={isTh ? 'ค้นหารายการ, เอกสาร, ผู้บันทึก...' : 'Search doc#, code, process, user...'}
+          placeholder={isTh ? 'ค้นหาทุกคอลัมน์ (Doc#, Code, SLoc, User...)' : 'Search all columns (Doc#, Code, SLoc, User...)'}
           className="w-full sm:w-72"
         />
       </div>
 
-      {/* TABLE WITH PAGINATION */}
+      {/* TABLE WITH 10 ITEMS DEFAULT PAGINATION */}
       <DataTable
         data={paginatedTransactions}
         columns={columns}
         keyExtractor={(tx) => tx.id}
         onRowClick={onRowClick}
         emptyTitle="No Recent Movements in Period"
-        emptyDescription="No stock receipts, issues, or adjustments occurred within the applied filter criteria."
+        emptyDescription="No stock receipts, issues, or adjustments match your search query or filter criteria."
         emptyType="transactions"
         pagination={{
           currentPage,

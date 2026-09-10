@@ -4,7 +4,7 @@ import { INITIAL_MATERIALS } from '../mock/materials';
 import { INITIAL_TRANSACTIONS } from '../mock/transactions';
 import { INITIAL_TRANSACTION_DOCUMENTS } from '../mock/transactionDocuments';
 import { useAuth } from './AuthContext';
-import { getCurrentStock, calculateStockStatus, getLastMovement } from '../utils/stockCalculation';
+import { getCurrentStock, calculateStockStatus, getLastMovement, checkDuplicatePrId, checkDuplicatePicklist } from '../utils/stockCalculation';
 
 interface StockContextType {
   materials: Material[];
@@ -27,7 +27,7 @@ interface StockContextType {
     referenceNo?: string;
     comment?: string;
     process?: string;
-  }) => { success: boolean; error?: string; transaction?: StockTransaction };
+  }) => { success: boolean; error?: string; transaction?: StockTransaction; document?: TransactionDocument };
   createGoodsIssue: (data: {
     materialId: string;
     quantity: number;
@@ -43,7 +43,7 @@ interface StockContextType {
     process?: string;
     referenceNo?: string;
     comment?: string;
-  }) => { success: boolean; error?: string; transaction?: StockTransaction };
+  }) => { success: boolean; error?: string; transaction?: StockTransaction; document?: TransactionDocument };
   createStockAdjustment: (data: {
     materialId: string;
     adjustmentType: 'INCREASE' | 'DECREASE' | 'SET_ACTUAL';
@@ -77,6 +77,125 @@ const MATERIALS_STORAGE_KEY = 'zycoda_materials_v1';
 const TRANSACTIONS_STORAGE_KEY = 'zycoda_transactions_v1';
 const DOCUMENTS_STORAGE_KEY = 'zycoda_documents_v1';
 
+// Legacy date-format GR & GI number mapping for clean backward compatibility
+const LEGACY_GR_MAP: Record<string, string> = {
+  'GR-260828-001': 'GR-0001',
+  'GR-260902-001': 'GR-0002',
+  'GR-260906-001': 'GR-0003',
+  'GR-260906-002': 'GR-0004',
+  'GR-260907-001': 'GR-0005',
+};
+
+const LEGACY_GI_MAP: Record<string, string> = {
+  'GI-260825-003': 'GI-0001',
+  'GI-260825-001': 'GI-0002',
+  'GI-260828-002': 'GI-0003',
+  'GI-260830-001': 'GI-0004',
+  'GI-260901-004': 'GI-0005',
+  'GI-260904-001': 'GI-0006',
+  'GI-260904-005': 'GI-0007',
+  'GI-260904-012': 'GI-0008',
+  'GI-260905-008': 'GI-0009',
+  'GI-260906-006': 'GI-0010',
+  'GI-260906-022': 'GI-0011',
+};
+
+export const generateNextGrNumber = (
+  documents: TransactionDocument[] = [],
+  transactions: StockTransaction[] = []
+): string => {
+  let maxNum = 0;
+
+  const scanNumber = (numStr?: string) => {
+    if (!numStr) return;
+    const match = numStr.match(/^GR-(\d+)$/i);
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  };
+
+  documents.forEach(doc => {
+    if (doc.transactionType === 'GR' || (doc.transactionNumber && doc.transactionNumber.toUpperCase().startsWith('GR-'))) {
+      scanNumber(doc.transactionNumber);
+    }
+  });
+
+  transactions.forEach(tx => {
+    if (tx.transactionType === 'GR') {
+      scanNumber(tx.documentNo);
+      scanNumber(tx.transactionNumber);
+    }
+  });
+
+  const nextNum = maxNum + 1;
+  return `GR-${String(nextNum).padStart(4, '0')}`;
+};
+
+export const generateNextGiNumber = (
+  documents: TransactionDocument[] = [],
+  transactions: StockTransaction[] = []
+): string => {
+  let maxNum = 0;
+
+  const scanNumber = (numStr?: string) => {
+    if (!numStr) return;
+    const match = numStr.match(/^GI-(\d+)$/i);
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  };
+
+  documents.forEach(doc => {
+    if (doc.transactionType === 'GI' || (doc.transactionNumber && doc.transactionNumber.toUpperCase().startsWith('GI-'))) {
+      scanNumber(doc.transactionNumber);
+    }
+  });
+
+  transactions.forEach(tx => {
+    if (tx.transactionType === 'GI') {
+      scanNumber(tx.documentNo);
+      scanNumber(tx.transactionNumber);
+    }
+  });
+
+  const nextNum = maxNum + 1;
+  return `GI-${String(nextNum).padStart(4, '0')}`;
+};
+
+const normalizeTransactions = (list: StockTransaction[]): StockTransaction[] => {
+  return list.map(tx => {
+    let docNo = tx.documentNo;
+    let txNo = tx.transactionNumber;
+    if (docNo && LEGACY_GR_MAP[docNo]) docNo = LEGACY_GR_MAP[docNo];
+    if (txNo && LEGACY_GR_MAP[txNo]) txNo = LEGACY_GR_MAP[txNo];
+    if (docNo && LEGACY_GI_MAP[docNo]) docNo = LEGACY_GI_MAP[docNo];
+    if (txNo && LEGACY_GI_MAP[txNo]) txNo = LEGACY_GI_MAP[txNo];
+    return {
+      ...tx,
+      documentNo: docNo,
+      transactionNumber: txNo,
+    };
+  });
+};
+
+const normalizeDocuments = (list: TransactionDocument[]): TransactionDocument[] => {
+  return list.map(doc => {
+    let txNo = doc.transactionNumber;
+    if (txNo && LEGACY_GR_MAP[txNo]) txNo = LEGACY_GR_MAP[txNo];
+    if (txNo && LEGACY_GI_MAP[txNo]) txNo = LEGACY_GI_MAP[txNo];
+    return {
+      ...doc,
+      transactionNumber: txNo,
+    };
+  });
+};
+
 export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, resetAuthData } = useAuth();
 
@@ -92,7 +211,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [transactions, setTransactions] = useState<StockTransaction[]>(() => {
     try {
       const saved = localStorage.getItem(TRANSACTIONS_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+      return saved ? normalizeTransactions(JSON.parse(saved)) : INITIAL_TRANSACTIONS;
     } catch {
       return INITIAL_TRANSACTIONS;
     }
@@ -101,7 +220,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [transactionDocuments, setTransactionDocuments] = useState<TransactionDocument[]>(() => {
     try {
       const saved = localStorage.getItem(DOCUMENTS_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_TRANSACTION_DOCUMENTS;
+      return saved ? normalizeDocuments(JSON.parse(saved)) : INITIAL_TRANSACTION_DOCUMENTS;
     } catch {
       return INITIAL_TRANSACTION_DOCUMENTS;
     }
@@ -229,7 +348,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     referenceNo?: string;
     comment?: string;
     process?: string;
-  }): { success: boolean; error?: string; transaction?: StockTransaction } => {
+  }): { success: boolean; error?: string; transaction?: StockTransaction; document?: TransactionDocument } => {
     const mat = materials.find(m => m.id === data.materialId);
     if (!mat) return { success: false, error: "Material not found" };
     if (data.quantity <= 0) return { success: false, error: "Quantity must be greater than 0" };
@@ -237,38 +356,83 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentStock = getCurrentStock(mat.id, transactions);
     const balanceAfter = currentStock + data.quantity;
     const now = new Date().toISOString();
-    const docNo = `GR-${now.slice(2, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
-
+    const docNo = generateNextGrNumber(transactionDocuments, transactions);
+    const docId = `doc-gr-${Date.now()}`;
     const price = data.pricePerUnit !== undefined ? data.pricePerUnit : (mat.standardPrice || 0);
+    const lineTotal = data.quantity * (price || 0);
 
     const grTx: StockTransaction = {
       id: `tx-gr-${Date.now()}`,
+      documentId: docId,
       documentNo: docNo,
+      transactionNumber: docNo,
       plant: mat.plant,
       materialId: mat.id,
       materialCode: mat.materialCode,
+      description: mat.description,
+      source: "ITEM_LEVEL",
       transactionType: "GR",
       quantity: data.quantity,
       balanceBefore: currentStock,
       balanceAfter: balanceAfter,
       pricePerUnit: price,
-      totalPrice: data.quantity * (price || 0),
+      price: price,
+      totalPrice: lineTotal,
       storageLocation: data.storageLocation || mat.storageLocation,
       storageBin: data.storageBin || mat.storageBin,
       batchNo: data.batchNo,
+      batchNumber: data.batchNo,
       serialNo: data.serialNo,
+      serialNumber: data.serialNo,
       lotNo: data.lotNo,
+      lot: data.lotNo,
       type: data.type || "Adjust Stock",
       supplier: data.supplier,
       process: data.process || "Stock Balance > GR",
       referenceNo: data.referenceNo,
+      referenceNumber: data.referenceNo,
       comment: data.comment,
       createdBy: currentUser?.username || "Admin",
       createdAt: now,
     };
 
+    const newDoc: TransactionDocument = {
+      id: docId,
+      transactionNumber: docNo,
+      transactionType: "GR",
+      plant: mat.plant,
+      referenceNumber: data.referenceNo,
+      createdDateTime: now,
+      createdBy: currentUser?.username || "Admin",
+      comment: data.comment,
+      status: "COMPLETED",
+      items: [
+        {
+          id: `item-gr-${Date.now()}`,
+          materialId: mat.id,
+          materialCode: mat.materialCode,
+          description: mat.description,
+          lot: data.lotNo,
+          batchNumber: data.batchNo,
+          serialNumber: data.serialNo,
+          quantity: data.quantity,
+          price: price,
+          type: data.type || "Adjust Stock",
+          supplier: data.supplier,
+          comment: data.comment,
+          storageLocation: data.storageLocation || mat.storageLocation,
+          storageBin: data.storageBin || mat.storageBin,
+          unit: mat.unit,
+          totalPrice: lineTotal,
+        },
+      ],
+      totalQuantity: data.quantity,
+      totalValue: lineTotal,
+    };
+
     setTransactions(prev => [grTx, ...prev]);
-    return { success: true, transaction: grTx };
+    setTransactionDocuments(prev => [newDoc, ...prev]);
+    return { success: true, transaction: grTx, document: newDoc };
   };
 
   const createGoodsIssue = (data: {
@@ -286,7 +450,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     process?: string;
     referenceNo?: string;
     comment?: string;
-  }): { success: boolean; error?: string; transaction?: StockTransaction } => {
+  }): { success: boolean; error?: string; transaction?: StockTransaction; document?: TransactionDocument } => {
     const mat = materials.find(m => m.id === data.materialId);
     if (!mat) return { success: false, error: "Material not found" };
     if (data.quantity <= 0) return { success: false, error: "Quantity must be greater than 0" };
@@ -299,40 +463,95 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     }
 
+    if (data.picklist && data.picklist.trim()) {
+      if (checkDuplicatePicklist(data.picklist, transactionDocuments, transactions)) {
+        return {
+          success: false,
+          error: 'PickList number already exists in the system.',
+        };
+      }
+    }
+
     const balanceAfter = currentStock - data.quantity;
     const now = new Date().toISOString();
-    const docNo = `GI-${now.slice(2, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
+    const docNo = generateNextGiNumber(transactionDocuments, transactions);
+    const docId = `doc-gi-${Date.now()}`;
     const price = data.pricePerUnit !== undefined ? data.pricePerUnit : (mat.standardPrice || 0);
+    const lineTotal = data.quantity * (price || 0);
 
     const giTx: StockTransaction = {
       id: `tx-gi-${Date.now()}`,
+      documentId: docId,
       documentNo: docNo,
+      transactionNumber: docNo,
       plant: mat.plant,
       materialId: mat.id,
       materialCode: mat.materialCode,
+      description: mat.description,
+      source: "ITEM_LEVEL",
       transactionType: "GI",
-      quantity: -data.quantity, // Negative for Goods Issue
+      quantity: -data.quantity, // Negative for Goods Issue movement
       balanceBefore: currentStock,
       balanceAfter: balanceAfter,
       pricePerUnit: price,
-      totalPrice: data.quantity * (price || 0),
+      price: price,
+      totalPrice: lineTotal,
       storageLocation: data.storageLocation || mat.storageLocation,
       storageBin: data.storageBin || mat.storageBin,
       batchNo: data.batchNo,
+      batchNumber: data.batchNo,
       serialNo: data.serialNo,
+      serialNumber: data.serialNo,
       lotNo: data.lotNo,
+      lot: data.lotNo,
       type: data.type || "Adjust Stock",
       supplier: data.supplier,
       picklist: data.picklist,
       process: data.process || "Stock Balance > GI",
       referenceNo: data.referenceNo,
+      referenceNumber: data.referenceNo,
       comment: data.comment,
       createdBy: currentUser?.username || "Admin",
       createdAt: now,
     };
 
+    const newDoc: TransactionDocument = {
+      id: docId,
+      transactionNumber: docNo,
+      transactionType: "GI",
+      plant: mat.plant,
+      referenceNumber: data.referenceNo,
+      createdDateTime: now,
+      createdBy: currentUser?.username || "Admin",
+      comment: data.comment,
+      status: "COMPLETED",
+      items: [
+        {
+          id: `item-gi-${Date.now()}`,
+          materialId: mat.id,
+          materialCode: mat.materialCode,
+          description: mat.description,
+          lot: data.lotNo,
+          batchNumber: data.batchNo,
+          serialNumber: data.serialNo,
+          quantity: data.quantity, // Positive line quantity
+          price: price,
+          type: data.type || "Adjust Stock",
+          supplier: data.supplier,
+          comment: data.comment,
+          storageLocation: data.storageLocation || mat.storageLocation,
+          storageBin: data.storageBin || mat.storageBin,
+          unit: mat.unit,
+          totalPrice: lineTotal,
+        },
+      ],
+      totalQuantity: data.quantity,
+      totalValue: lineTotal,
+    };
+
     setTransactions(prev => [giTx, ...prev]);
-    return { success: true, transaction: giTx };
+    setTransactionDocuments(prev => [newDoc, ...prev]);
+    return { success: true, transaction: giTx, document: newDoc };
   };
 
   const createStockAdjustment = (data: {
@@ -402,9 +621,14 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: 'GR document must contain at least 1 item line.' };
     }
 
+    if (docData.prId && docData.prId.trim()) {
+      if (checkDuplicatePrId(docData.prId, transactionDocuments, transactions)) {
+        return { success: false, error: 'PR ID already exists in the system.' };
+      }
+    }
+
     const now = new Date().toISOString();
-    const dateStr = now.slice(2, 10).replace(/-/g, '');
-    const grNumber = `GR-${dateStr}-${Math.floor(100 + Math.random() * 900)}`;
+    const grNumber = generateNextGrNumber(transactionDocuments, transactions);
     const docId = `doc-gr-${Date.now()}`;
 
     const generatedItems: TransactionItem[] = [];
@@ -451,24 +675,32 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id: `tx-gr-${Date.now()}-${i}`,
         documentId: docId,
         documentNo: grNumber,
+        transactionNumber: grNumber,
         plant: docData.plant || mat.plant,
         materialId: mat.id,
         materialCode: mat.materialCode,
+        description: mat.description,
+        source: 'DOCUMENT_LEVEL',
         transactionType: 'GR',
         quantity: item.quantity,
         balanceBefore: currentStock,
         balanceAfter: balanceAfter,
         pricePerUnit: price,
+        price: price,
         totalPrice: lineTotal,
         storageLocation: transItem.storageLocation,
         storageBin: transItem.storageBin,
         batchNo: item.batchNumber,
+        batchNumber: item.batchNumber,
         serialNo: item.serialNumber,
+        serialNumber: item.serialNumber,
         lotNo: item.lot,
+        lot: item.lot,
         type: item.type || 'Adjust Stock',
         supplier: item.supplier,
         process: 'Transaction > GR',
         referenceNo: docData.referenceNumber,
+        referenceNumber: docData.referenceNumber,
         comment: item.comment || docData.comment,
         createdBy: currentUser?.username || 'Admin',
         createdAt: now,
@@ -511,6 +743,12 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: 'GI document must contain at least 1 item line.' };
     }
 
+    if (docData.picklist && docData.picklist.trim()) {
+      if (checkDuplicatePicklist(docData.picklist, transactionDocuments, transactions)) {
+        return { success: false, error: 'PickList number already exists in the system.' };
+      }
+    }
+
     // Pre-validate all item lines against available stock
     for (const item of docData.items) {
       const mat = materials.find(m => m.id === item.materialId || m.materialCode === item.materialCode);
@@ -530,8 +768,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const now = new Date().toISOString();
-    const dateStr = now.slice(2, 10).replace(/-/g, '');
-    const giNumber = `GI-${dateStr}-${Math.floor(100 + Math.random() * 900)}`;
+    const giNumber = generateNextGiNumber(transactionDocuments, transactions);
     const docId = `doc-gi-${Date.now()}`;
 
     const generatedItems: TransactionItem[] = [];
@@ -571,25 +808,33 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id: `tx-gi-${Date.now()}-${i}`,
         documentId: docId,
         documentNo: giNumber,
+        transactionNumber: giNumber,
         plant: docData.plant || mat.plant,
         materialId: mat.id,
         materialCode: mat.materialCode,
+        description: mat.description,
+        source: 'DOCUMENT_LEVEL',
         transactionType: 'GI',
         quantity: -item.quantity, // Negative for GI movement
         balanceBefore: currentStock,
         balanceAfter: balanceAfter,
         pricePerUnit: price,
+        price: price,
         totalPrice: lineTotal,
         storageLocation: transItem.storageLocation,
         storageBin: transItem.storageBin,
         batchNo: item.batchNumber,
+        batchNumber: item.batchNumber,
         serialNo: item.serialNumber,
+        serialNumber: item.serialNumber,
         lotNo: item.lot,
+        lot: item.lot,
         type: item.type || 'Adjust Stock',
         supplier: item.supplier,
         picklist: docData.picklist,
         process: 'Transaction > GI',
         referenceNo: docData.referenceNumber,
+        referenceNumber: docData.referenceNumber,
         comment: item.comment || docData.comment,
         createdBy: currentUser?.username || 'Admin',
         createdAt: now,
@@ -605,6 +850,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       transactionType: 'GI',
       plant: docData.plant,
       referenceNumber: docData.referenceNumber,
+      picklist: docData.picklist,
       createdDateTime: now,
       createdBy: currentUser?.username || 'Admin',
       comment: docData.comment,

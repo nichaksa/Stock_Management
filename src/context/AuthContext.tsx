@@ -28,11 +28,64 @@ const USERS_STORAGE_KEY = 'zycoda_users_v1';
 const ROLES_STORAGE_KEY = 'zycoda_roles_v1';
 const SESSION_STORAGE_KEY = 'zycoda_session_v1';
 
+function migrateRoles(savedRoles: Role[]): Role[] {
+  const hasOldStore = savedRoles.some(
+    r => r.id === 'role-store-op' || r.id === 'role-store-view' || r.name === 'Store Operator' || r.name === 'Store Viewer'
+  );
+  if (!hasOldStore && savedRoles.some(r => r.id === 'role-store')) {
+    return savedRoles;
+  }
+
+  const filtered = savedRoles.filter(
+    r => r.id !== 'role-store-view' && r.name !== 'Store Viewer'
+  );
+  const migrated = filtered.map(r => {
+    if (r.id === 'role-store-op' || r.name === 'Store Operator') {
+      return {
+        ...r,
+        id: 'role-store',
+        name: 'Store',
+        description:
+          'Full store and warehouse operations: Master Data, Stock Balance, GR, GI, Adjustments, Transactions, and Reports',
+        permissions: [
+          'MASTER_VIEW',
+          'MASTER_CREATE',
+          'MASTER_EDIT',
+          'STOCK_BALANCE_VIEW',
+          'GR_CREATE',
+          'GI_CREATE',
+          'STOCK_ADJUST',
+          'MOVEMENT_HISTORY_VIEW',
+          'TRANSACTION_VIEW',
+          'INVENTORY_REPORT_VIEW',
+        ] as PermissionKey[],
+      };
+    }
+    return r;
+  });
+
+  if (!migrated.some(r => r.id === 'role-store')) {
+    const storeRole = INITIAL_ROLES.find(r => r.id === 'role-store');
+    if (storeRole) migrated.splice(1, 0, storeRole);
+  }
+
+  return migrated;
+}
+
+function migrateUsers(savedUsers: User[]): User[] {
+  return savedUsers.map(u => {
+    if (u.roleId === 'role-store-op' || u.roleId === 'role-store-view') {
+      return { ...u, roleId: 'role-store' };
+    }
+    return u;
+  });
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [roles, setRoles] = useState<Role[]>(() => {
     try {
       const saved = localStorage.getItem(ROLES_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_ROLES;
+      return saved ? migrateRoles(JSON.parse(saved)) : INITIAL_ROLES;
     } catch {
       return INITIAL_ROLES;
     }
@@ -41,7 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_USERS;
+      return saved ? migrateUsers(JSON.parse(saved)) : INITIAL_USERS;
     } catch {
       return INITIAL_USERS;
     }
@@ -50,7 +103,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(() => {
     try {
       const saved = localStorage.getItem(SESSION_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const user: SessionUser = JSON.parse(saved);
+      if (user.roleId === 'role-store-op' || user.roleId === 'role-store-view') {
+        user.roleId = 'role-store';
+        user.roleName = 'Store';
+      }
+      return user;
     } catch {
       return null;
     }

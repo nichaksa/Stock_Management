@@ -37,23 +37,31 @@ export interface StockTransaction {
   id: string;
   documentId?: string;
   documentNo: string;
+  transactionNumber?: string;
   plant: string;
   materialId: string;
   materialCode: string;
+  description?: string;
+  source?: 'ITEM_LEVEL' | 'DOCUMENT_LEVEL' | string;
   transactionType: TransactionType;
   quantity: number; // positive for OPENING/GR, negative for GI, +/- for ADJUSTMENT
   balanceBefore: number;
   balanceAfter: number;
   pricePerUnit?: number;
+  price?: number;
   totalPrice?: number;
   storageLocation?: string;
   storageBin?: string;
   batchNo?: string;
+  batchNumber?: string;
   serialNo?: string;
+  serialNumber?: string;
   lotNo?: string;
+  lot?: string;
   picklist?: string;
   process?: string;
   referenceNo?: string;
+  referenceNumber?: string;
   type?: string;
   supplier?: string;
   comment?: string;
@@ -82,11 +90,12 @@ export interface TransactionItem {
 
 export interface TransactionDocument {
   id: string;
-  transactionNumber: string; // e.g. "GR-20260908-001" or "GI-20260908-002"
+  transactionNumber: string; // e.g. "GR-0001" or "GI-0001"
   transactionType: TransactionType; // "GR" | "GI" | "OPENING" | "ADJUSTMENT"
   plant: string;
   referenceNumber?: string;
   prId?: string;
+  picklist?: string;
   createdDateTime: string;
   createdBy: string;
   comment?: string;

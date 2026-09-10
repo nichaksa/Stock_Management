@@ -34,9 +34,9 @@ export const INITIAL_ROLES: Role[] = [
     isSystem: true,
   },
   {
-    id: "role-store-op",
-    name: "Store Operator",
-    description: "Daily warehouse store operations: Master, Balance, GR, GI, Adjust, Reports",
+    id: "role-store",
+    name: "Store",
+    description: "Full store and warehouse operations: Master Data, Stock Balance, GR, GI, Adjustments, Transactions, and Reports",
     permissions: [
       "MASTER_VIEW",
       "MASTER_CREATE",
@@ -45,18 +45,6 @@ export const INITIAL_ROLES: Role[] = [
       "GR_CREATE",
       "GI_CREATE",
       "STOCK_ADJUST",
-      "MOVEMENT_HISTORY_VIEW",
-      "TRANSACTION_VIEW",
-      "INVENTORY_REPORT_VIEW",
-    ],
-  },
-  {
-    id: "role-store-view",
-    name: "Store Viewer",
-    description: "Read-only access to stock balances, master data, and transaction logs",
-    permissions: [
-      "MASTER_VIEW",
-      "STOCK_BALANCE_VIEW",
       "MOVEMENT_HISTORY_VIEW",
       "TRANSACTION_VIEW",
       "INVENTORY_REPORT_VIEW",

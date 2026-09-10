@@ -1,23 +1,27 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { Search, X } from 'lucide-react';
 
-interface SearchInputProps {
+export interface SearchInputProps {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
   className?: string;
+  id?: string;
 }
 
-export const SearchInput: React.FC<SearchInputProps> = ({
+export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(({
   value,
   onChange,
   placeholder = "Search...",
   className = "",
-}) => {
+  id,
+}, ref) => {
   return (
     <div className={`relative flex items-center ${className}`}>
       <Search className="absolute left-3 w-4 h-4 text-app-muted dark:text-app-darkMuted pointer-events-none" />
       <input
+        ref={ref}
+        id={id}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -35,4 +39,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       )}
     </div>
   );
-};
+});
+
+SearchInput.displayName = 'SearchInput';
+

@@ -27,8 +27,8 @@ interface GoodsReceiptDrawerProps {
 }
 
 const GR_TYPES = [
+  'คืนของ',
   'Adjust Stock',
-  'รับ SP คืนจากช่าง',
   'รับ SP นอกระบบ',
   'รับ SP จาก Project',
 ] as const;

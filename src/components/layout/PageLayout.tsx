@@ -15,7 +15,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   children,
 }) => {
   return (
-    <div className="space-y-4 max-w-7xl mx-auto w-full pb-12">
+    <div className="space-y-4 w-full pb-12">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-app-darkSurface p-4 sm:p-5 rounded-2xl border border-app-border dark:border-app-darkBorder shadow-subtle">
         <div className="min-w-0">

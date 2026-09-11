@@ -27,7 +27,6 @@ import {
 const MASTER_COLUMNS_DEF: ColumnDefinition[] = [
   { id: 'plant', label: 'Plant', required: true },
   { id: 'materialDetails', label: 'Material Details', required: true },
-  { id: 'quantity', label: 'Quantity' },
   { id: 'materialType', label: 'Type' },
   { id: 'unit', label: 'Unit' },
   { id: 'standardPrice', label: 'Price' },
@@ -52,7 +51,6 @@ export const MasterDataPage: React.FC = () => {
     return [
       'plant',
       'materialDetails',
-      'quantity',
       'materialType',
       'unit',
       'standardPrice',
@@ -240,38 +238,6 @@ export const MasterDataPage: React.FC = () => {
             </div>
           </div>
         ),
-      });
-    }
-
-    // 3. Quantity (Current Stock in System)
-    if (visibleColIds.includes('quantity')) {
-      cols.push({
-        id: 'quantity',
-        header: t('quantity'),
-        sortable: true,
-        align: 'right',
-        className: 'min-w-[110px]',
-        accessor: (m) => {
-          const currentStock = getCurrentStock(m.id, transactions);
-          return (
-            <div className="text-right">
-              <span
-                className={`font-mono text-xs sm:text-sm font-bold ${
-                  currentStock === 0
-                    ? 'text-gi'
-                    : currentStock <= m.min
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-app-text dark:text-app-darkText'
-                }`}
-              >
-                {currentStock.toLocaleString()}
-              </span>{' '}
-              <span className="text-[11px] font-normal text-app-muted">
-                {m.unit}
-              </span>
-            </div>
-          );
-        },
       });
     }
 

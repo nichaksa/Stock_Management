@@ -19,7 +19,7 @@ import {
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const { t, language, toggleLanguage } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const isDark = theme === 'dark';
@@ -65,16 +65,37 @@ export const LoginPage: React.FC = () => {
       <div className="absolute inset-0 bg-[radial-gradient(#94a3b830_1px,transparent_1px)] dark:bg-[radial-gradient(#33415540_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
 
       {/* FIXED TOP-RIGHT CONTROLS: THEME & LANGUAGE */}
-      <div className="fixed top-5 right-5 sm:top-6 sm:right-8 z-30 flex items-center gap-2.5">
-        <button
-          type="button"
-          onClick={toggleLanguage}
-          className="flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand-blue transition-all shadow-xs hover:border-brand-blue/40 cursor-pointer"
-        >
-          <Globe className="w-4 h-4 text-slate-400" />
-          <span>{language.toUpperCase()}</span>
-        </button>
+      <div className="fixed top-5 right-5 sm:top-6 sm:right-8 z-30 flex items-center gap-2">
+        {/* Language Selector */}
+        <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-1 shadow-xs">
+          <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-1" />
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setLanguage('en')}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                language === 'en'
+                  ? 'bg-brand-blue text-white shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-brand-blue'
+              }`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage('th')}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                language === 'th'
+                  ? 'bg-brand-blue text-white shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-brand-blue'
+              }`}
+            >
+              TH
+            </button>
+          </div>
+        </div>
 
+        {/* Theme Toggle */}
         <button
           type="button"
           onClick={toggleTheme}

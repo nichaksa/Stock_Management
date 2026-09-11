@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const navigate = useNavigate();
   const { currentUser, logout, hasPermission } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { language, toggleLanguage, t } = useLanguage();
+  const { language, setLanguage, toggleLanguage, t } = useLanguage();
   const { addToast } = useToast();
   const { resetStockDemoData } = useStock();
 
@@ -172,11 +172,39 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
         {/* RIGHT SECTION */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* Language Selector */}
+          <div className="inline-flex items-center rounded-lg border border-app-border dark:border-app-darkBorder bg-app-bg dark:bg-app-darkBg p-0.5 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setLanguage('en')}
+              className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                language === 'en'
+                  ? 'bg-brand-blue text-white shadow-xs font-bold'
+                  : 'text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText'
+              }`}
+              title="Switch to English"
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage('th')}
+              className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                language === 'th'
+                  ? 'bg-brand-blue text-white shadow-xs font-bold'
+                  : 'text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText'
+              }`}
+              title="เปลี่ยนเป็นภาษาไทย"
+            >
+              TH
+            </button>
+          </div>
+
           {/* Theme Toggle */}
           <button
             type="button"
             onClick={toggleTheme}
-            className="p-2 rounded-lg text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText hover:bg-app-bg dark:hover:bg-app-darkBorder transition-colors"
+            className="p-2 rounded-lg text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText hover:bg-app-bg dark:hover:bg-app-darkBorder transition-colors cursor-pointer"
             title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
           >
             {theme === 'light' ? (
@@ -184,17 +212,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             ) : (
               <Sun className="w-4 h-4 text-amber-400" />
             )}
-          </button>
-
-          {/* Language Toggle */}
-          <button
-            type="button"
-            onClick={toggleLanguage}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-app-border dark:border-app-darkBorder text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText hover:bg-app-bg dark:hover:bg-app-darkBorder transition-colors"
-            title="Toggle Language EN / TH"
-          >
-            <Globe className="w-3.5 h-3.5 text-brand-blue" />
-            <span>{language.toUpperCase()}</span>
           </button>
 
           {/* Notifications */}

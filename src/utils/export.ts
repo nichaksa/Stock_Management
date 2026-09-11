@@ -21,12 +21,11 @@ function escapeCsvCell(cell: any): string {
   return `"${str}"`;
 }
 
-export function exportMasterDataToCsv(materials: Material[], transactions: StockTransaction[], filename = "zycoda_master_data.csv") {
+export function exportMasterDataToCsv(materials: Material[], _transactions: StockTransaction[], filename = "zycoda_master_data.csv") {
   const headers = [
     "Plant",
     "Material Code",
     "Description",
-    "Quantity",
     "Material Type",
     "Unit",
     "Standard Price",
@@ -44,7 +43,6 @@ export function exportMasterDataToCsv(materials: Material[], transactions: Stock
     m.plant,
     m.materialCode,
     m.description,
-    getCurrentStock(m.id, transactions),
     m.materialType,
     m.unit,
     m.standardPrice,

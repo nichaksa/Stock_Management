@@ -21,10 +21,20 @@
     --app-muted: #64748B;
   }
 
+  html, body, #root {
+    font-family: 'Inter', 'Prompt', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
   body {
     background-color: var(--app-bg);
     color: var(--app-text);
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  input, button, select, textarea, optgroup {
+    font-family: inherit;
   }
 }
 

@@ -26,7 +26,7 @@ export const HomePage: React.FC = () => {
   const { t } = useLanguage();
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       {/* Welcome Banner */}
       <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

@@ -4,7 +4,7 @@ import { Drawer } from '../common/Drawer';
 import { formatDateTime } from '../../utils/dateRange';
 import { StatusBadge } from '../common/StatusBadge';
 import { QRCodeSVG } from 'qrcode.react';
-import { Printer, Copy, FileText, CheckCircle2 } from 'lucide-react';
+import { Printer, Copy, FileText, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
 interface TransactionDetailDrawerProps {
@@ -22,8 +22,39 @@ export const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = (
 
   if (!transaction) return null;
 
-  const isGr = transaction.transactionType === 'GR' || (transaction.transactionType === 'OPENING' && transaction.quantity > 0);
-  const isGi = transaction.transactionType === 'GI';
+  const isTransfer =
+    transaction.source === 'Transfer' ||
+    transaction.documentNo?.startsWith('TR-') ||
+    transaction.referenceNo?.startsWith('TR-') ||
+    Boolean(transaction.transferRoute) ||
+    (transaction.process || '').toLowerCase().includes('transfer');
+
+  const movementType: 'GR' | 'GI' =
+    transaction.transactionType === 'GI'
+      ? 'GI'
+      : transaction.transactionType === 'GR'
+      ? 'GR'
+      : transaction.quantity >= 0
+      ? 'GR'
+      : 'GI';
+
+  const isGi = movementType === 'GI';
+  const isGr = movementType === 'GR';
+
+  const sourceName =
+    isTransfer
+      ? 'Transfer'
+      : transaction.source === 'Material Request' || transaction.referenceNo?.startsWith('REQ-')
+      ? 'Material Request'
+      : transaction.transactionType === 'ADJUSTMENT' || transaction.source === 'Adjustment'
+      ? 'Adjustment'
+      : transaction.transactionType === 'OPENING' || transaction.source === 'Opening Stock'
+      ? 'Opening Stock'
+      : transaction.source || 'Manual';
+
+  const transferRef = transaction.referenceNo || transaction.referenceNumber || transaction.documentNo;
+  const sourceStore = transaction.fromStore || (isGi ? transaction.storageLocation : 'STORE-01');
+  const destStore = transaction.toStore || (!isGi ? transaction.storageLocation : 'STORE-02');
 
   const handlePrintReceipt = () => {
     const printWindow = window.open('', '_blank');
@@ -52,9 +83,9 @@ export const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = (
           <div class="grid">
             <div><span class="label">Plant:</span> ${transaction.plant}</div>
             <div><span class="label">Material Code:</span> ${transaction.materialCode}</div>
-            <div><span class="label">Transaction Type:</span> ${transaction.transactionType}</div>
+            <div><span class="label">Movement Type:</span> ${movementType}</div>
+            <div><span class="label">Source / Origin:</span> ${sourceName}</div>
             <div><span class="label">User:</span> ${transaction.createdBy}</div>
-            <div><span class="label">Process:</span> ${transaction.process || '-'}</div>
             <div><span class="label">Reference No:</span> ${transaction.referenceNo || '-'}</div>
             <div><span class="label">Storage Location:</span> ${transaction.storageLocation || '-'} / ${transaction.storageBin || '-'}</div>
             <div><span class="label">Batch / Lot:</span> ${transaction.batchNo || '-'} / ${transaction.lotNo || '-'}</div>
@@ -121,26 +152,76 @@ export const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = (
       }
     >
       <div className="space-y-4">
-        {/* Banner */}
+        {/* Movement Banner */}
         <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle flex items-center justify-between">
           <div>
             <span className="text-[10px] font-bold text-app-muted uppercase tracking-wider block">
-              Movement Quantity
+              Movement Quantity ({movementType})
             </span>
             <span
               className={`text-2xl font-mono font-bold ${
-                transaction.quantity > 0 ? 'text-gr' : 'text-gi'
+                isGr ? 'text-gr' : 'text-gi'
               }`}
             >
-              {transaction.quantity > 0 ? `+${transaction.quantity}` : `${transaction.quantity}`}
+              {isGr ? `+${transaction.quantity}` : `${transaction.quantity}`}
             </span>
             <span className="text-xs text-app-muted ml-1.5">
               (Balance: {transaction.balanceBefore} → {transaction.balanceAfter})
             </span>
           </div>
 
-          <StatusBadge status={transaction.transactionType} size="lg" />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={movementType} size="lg" showDot={false} />
+            <span className="px-2.5 py-1 rounded-full bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold font-sans">
+              Source: {sourceName}
+            </span>
+          </div>
         </div>
+
+        {/* Transfer Linked Movements Detail (If from Transfer) */}
+        {isTransfer && (
+          <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
+                Transfer Movement Details ({isGi ? 'Outbound GI' : 'Inbound GR'})
+              </h4>
+              <span className="font-mono text-xs font-bold text-purple-600 bg-purple-100 dark:bg-purple-900/50 px-2 py-0.5 rounded">
+                Ref: {transferRef}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs bg-white dark:bg-app-darkSurface p-3 rounded-xl border border-purple-200/80 dark:border-purple-900/50">
+              <div>
+                <span className="text-app-muted block text-[11px]">Movement Type</span>
+                <strong className="font-mono text-app-text dark:text-app-darkText">{movementType}</strong>
+              </div>
+              <div>
+                <span className="text-app-muted block text-[11px]">Source / Origin</span>
+                <strong className="font-mono text-purple-600">Transfer</strong>
+              </div>
+              <div>
+                <span className="text-app-muted block text-[11px]">Plant</span>
+                <span className="font-semibold text-app-text dark:text-app-darkText">{transaction.plant}</span>
+              </div>
+              <div>
+                <span className="text-app-muted block text-[11px]">Current Store</span>
+                <strong className="font-mono text-app-text dark:text-app-darkText">{transaction.storageLocation}</strong>
+              </div>
+              <div>
+                <span className="text-app-muted block text-[11px]">
+                  {isGi ? 'Transfer To (Destination Store)' : 'Transfer From (Source Store)'}
+                </span>
+                <strong className="font-mono text-purple-600">
+                  {isGi ? destStore : sourceStore}
+                </strong>
+              </div>
+              <div>
+                <span className="text-app-muted block text-[11px]">Transfer Reference</span>
+                <strong className="font-mono text-app-text dark:text-app-darkText">{transferRef}</strong>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Audit Details Matrix */}
         <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
@@ -178,16 +259,16 @@ export const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = (
               <span className="font-mono text-app-text dark:text-app-darkText">{transaction.referenceNo || '-'}</span>
             </div>
             <div>
-              <span className="text-app-muted block text-[11px]">Picklist No.</span>
-              <span className="font-mono text-app-text dark:text-app-darkText">{transaction.picklist || '-'}</span>
-            </div>
-            <div>
               <span className="text-app-muted block text-[11px]">Batch No.</span>
               <span className="font-mono text-app-text dark:text-app-darkText">{transaction.batchNo || '-'}</span>
             </div>
             <div>
-              <span className="text-app-muted block text-[11px]">Lot / Serial No.</span>
-              <span className="font-mono text-app-text dark:text-app-darkText">{transaction.lotNo || '-'} {transaction.serialNo ? `(SN: ${transaction.serialNo})` : ''}</span>
+              <span className="text-app-muted block text-[11px]">Lot No.</span>
+              <span className="font-mono text-app-text dark:text-app-darkText">{transaction.lotNo || '-'}</span>
+            </div>
+            <div>
+              <span className="text-app-muted block text-[11px]">Source</span>
+              <span className="font-medium text-app-text dark:text-app-darkText">{sourceName}</span>
             </div>
           </div>
 

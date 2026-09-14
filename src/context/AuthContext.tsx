@@ -29,50 +29,42 @@ const ROLES_STORAGE_KEY = 'zycoda_roles_v1';
 const SESSION_STORAGE_KEY = 'zycoda_session_v1';
 
 function migrateRoles(savedRoles: Role[]): Role[] {
-  const hasOldStore = savedRoles.some(
-    r => r.id === 'role-store-op' || r.id === 'role-store-view' || r.name === 'Store Operator' || r.name === 'Store Viewer'
-  );
-  if (!hasOldStore && savedRoles.some(r => r.id === 'role-store')) {
-    return savedRoles;
+  if (!Array.isArray(savedRoles) || savedRoles.length === 0) {
+    return INITIAL_ROLES;
   }
 
-  const filtered = savedRoles.filter(
-    r => r.id !== 'role-store-view' && r.name !== 'Store Viewer'
-  );
-  const migrated = filtered.map(r => {
-    if (r.id === 'role-store-op' || r.name === 'Store Operator') {
+  // Ensure all initial system roles exist and contain latest permissions
+  const updatedRoles = savedRoles.map(savedRole => {
+    const initialRole = INITIAL_ROLES.find(
+      r => r.id === savedRole.id || r.name.toLowerCase() === savedRole.name.toLowerCase()
+    );
+    if (initialRole) {
+      const mergedPerms = Array.from(new Set([...(savedRole.permissions || []), ...initialRole.permissions]));
       return {
-        ...r,
-        id: 'role-store',
-        name: 'Store',
-        description:
-          'Full store and warehouse operations: Master Data, Stock Balance, GR, GI, Adjustments, Transactions, and Reports',
-        permissions: [
-          'MASTER_VIEW',
-          'MASTER_CREATE',
-          'MASTER_EDIT',
-          'STOCK_BALANCE_VIEW',
-          'GR_CREATE',
-          'GI_CREATE',
-          'STOCK_ADJUST',
-          'MOVEMENT_HISTORY_VIEW',
-          'TRANSACTION_VIEW',
-          'INVENTORY_REPORT_VIEW',
-        ] as PermissionKey[],
+        ...savedRole,
+        id: initialRole.id,
+        name: initialRole.name,
+        description: initialRole.description,
+        permissions: mergedPerms,
       };
     }
-    return r;
+    return savedRole;
   });
 
-  if (!migrated.some(r => r.id === 'role-store')) {
-    const storeRole = INITIAL_ROLES.find(r => r.id === 'role-store');
-    if (storeRole) migrated.splice(1, 0, storeRole);
-  }
+  // Ensure no missing initial roles
+  INITIAL_ROLES.forEach(initRole => {
+    if (!updatedRoles.some(r => r.id === initRole.id)) {
+      updatedRoles.push(initRole);
+    }
+  });
 
-  return migrated;
+  return updatedRoles;
 }
 
 function migrateUsers(savedUsers: User[]): User[] {
+  if (!Array.isArray(savedUsers) || savedUsers.length === 0) {
+    return INITIAL_USERS;
+  }
   return savedUsers.map(u => {
     if (u.roleId === 'role-store-op' || u.roleId === 'role-store-view') {
       return { ...u, roleId: 'role-store' };
@@ -123,6 +115,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
   }, [users]);
+
+  useEffect(() => {
+    if (currentUser) {
+      const activeRole = roles.find(r => r.id === currentUser.roleId);
+      if (activeRole && JSON.stringify(currentUser.permissions) !== JSON.stringify(activeRole.permissions)) {
+        setCurrentUser(prev => prev ? {
+          ...prev,
+          roleName: activeRole.name,
+          permissions: activeRole.permissions,
+        } : null);
+      }
+    }
+  }, [roles, currentUser?.roleId]);
 
   useEffect(() => {
     if (currentUser) {
@@ -183,13 +188,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasPermission = useCallback((permission: PermissionKey): boolean => {
     if (!currentUser) return false;
-    return currentUser.permissions.includes(permission);
-  }, [currentUser]);
+    const activeRole = roles.find(r => r.id === currentUser.roleId);
+    if (activeRole) {
+      return activeRole.permissions.includes(permission);
+    }
+    return (currentUser.permissions || []).includes(permission);
+  }, [currentUser, roles]);
 
   const hasAnyPermission = useCallback((perms: PermissionKey[]): boolean => {
     if (!currentUser) return false;
-    return perms.some(p => currentUser.permissions.includes(p));
-  }, [currentUser]);
+    const activeRole = roles.find(r => r.id === currentUser.roleId);
+    const userPerms = activeRole ? activeRole.permissions : (currentUser.permissions || []);
+    return perms.some(p => userPerms.includes(p));
+  }, [currentUser, roles]);
 
   const addUser = (userData: Omit<User, 'id' | 'createdAt'>): { success: boolean; error?: string; user?: User } => {
     const trimmedUsername = userData.username.trim();

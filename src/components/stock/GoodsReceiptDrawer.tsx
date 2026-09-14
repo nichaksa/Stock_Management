@@ -17,6 +17,7 @@ import {
   Hash,
   Barcode,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -46,7 +47,8 @@ export const GoodsReceiptDrawer: React.FC<GoodsReceiptDrawerProps> = ({
   const [type, setType] = useState<string>('Adjust Stock');
   const [lot, setLot] = useState<string>('');
   const [batchNo, setBatchNo] = useState<string>('');
-  const [serialNumber, setSerialNumber] = useState<string>('');
+  const [receivedDate, setReceivedDate] = useState<string>('');
+  const [expiryDate, setExpiryDate] = useState<string>('');
   const [supplier, setSupplier] = useState<string>('');
   const [comment, setComment] = useState<string>('');
 
@@ -64,7 +66,8 @@ export const GoodsReceiptDrawer: React.FC<GoodsReceiptDrawerProps> = ({
       const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
       setBatchNo(`B${dateStr}`);
       setLot('');
-      setSerialNumber('');
+      setReceivedDate(new Date().toISOString().slice(0, 10));
+      setExpiryDate('');
       setSupplier('');
       setComment('');
       setError('');
@@ -94,7 +97,8 @@ export const GoodsReceiptDrawer: React.FC<GoodsReceiptDrawerProps> = ({
         type,
         lotNo: lot.trim() || undefined,
         batchNo: batchNo.trim() || undefined,
-        serialNo: serialNumber.trim() || undefined,
+        receivedDate: receivedDate || undefined,
+        expiryDate: expiryDate || undefined,
         supplier: supplier.trim() || undefined,
         comment: comment.trim() || undefined,
         process: 'Stock Balance > GR',
@@ -306,8 +310,8 @@ export const GoodsReceiptDrawer: React.FC<GoodsReceiptDrawerProps> = ({
             </div>
           </div>
 
-          {/* Batch, Lot, Serial Number */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Batch & Lot */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-app-secondary dark:text-app-darkSecondary mb-1 uppercase tracking-wider">
                 Batch No.
@@ -333,16 +337,30 @@ export const GoodsReceiptDrawer: React.FC<GoodsReceiptDrawerProps> = ({
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
               />
             </div>
+          </div>
 
+          {/* Received Date & Expiry Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-xs font-semibold text-app-secondary dark:text-app-darkSecondary mb-1 uppercase tracking-wider">
-                Serial Number
+              <label className="block text-xs font-semibold text-app-secondary dark:text-app-darkSecondary mb-1 uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-app-muted" /> Received Date
               </label>
               <input
-                type="text"
-                value={serialNumber}
-                onChange={e => setSerialNumber(e.target.value)}
-                placeholder="Optional S/N"
+                type="date"
+                value={receivedDate}
+                onChange={e => setReceivedDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-app-secondary dark:text-app-darkSecondary mb-1 uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-amber-500" /> Expiry Date (วันหมดอายุ)
+              </label>
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={e => setExpiryDate(e.target.value)}
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
               />
             </div>

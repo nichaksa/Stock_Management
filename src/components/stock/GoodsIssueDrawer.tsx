@@ -29,7 +29,7 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
   onClose,
   material,
 }) => {
-  const { getItemStock, createGoodsIssue } = useStock();
+  const { getItemStock, createGoodsIssue, getLotBalances } = useStock();
   const { addToast } = useToast();
 
   // Qty must default to -1 and always remain negative
@@ -39,7 +39,6 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
   const [type] = useState<string>('Adjust Stock'); // Fixed to 'Adjust Stock'
   const [lot, setLot] = useState<string>('');
   const [batchNo, setBatchNo] = useState<string>('');
-  const [serialNumber, setSerialNumber] = useState<string>('');
   const [supplier, setSupplier] = useState<string>('');
   const [comment, setComment] = useState<string>('');
 
@@ -47,6 +46,7 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
   const [error, setError] = useState('');
 
   const currentStock = material ? getItemStock(material.id) : 0;
+  const activeLots = material ? getLotBalances().filter(l => l.materialId === material.id && l.quantity > 0) : [];
   // Live calculation: Qty is negative, so stockAfter is currentStock + qty
   const stockAfter = currentStock + (qty < 0 ? qty : 0);
   const isBelowZero = stockAfter < 0;
@@ -60,7 +60,6 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
       const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
       setBatchNo(`B${dateStr}`);
       setLot('');
-      setSerialNumber('');
       setSupplier('');
       setComment('');
       setError('');
@@ -134,7 +133,6 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
         type: 'Adjust Stock',
         lotNo: lot.trim() || undefined,
         batchNo: batchNo.trim() || undefined,
-        serialNo: serialNumber.trim() || undefined,
         supplier: supplier.trim() || undefined,
         comment: comment.trim() || undefined,
         process: 'Stock Balance > GI',
@@ -377,8 +375,37 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
             </div>
           </div>
 
-          {/* Batch, Lot, Serial Number */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Active Lot Selector */}
+          {activeLots.length > 0 && (
+            <div className="p-3.5 bg-blue-50/80 dark:bg-blue-950/40 rounded-xl border border-blue-200/80 dark:border-blue-900/60 space-y-1.5">
+              <label className="block text-xs font-bold text-brand-blue uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5" />
+                <span>Select Available Lot ({activeLots.length} Active Lots)</span>
+              </label>
+              <select
+                value={lot}
+                onChange={e => {
+                  const selectedLotNo = e.target.value;
+                  setLot(selectedLotNo);
+                  const matchedLot = activeLots.find(l => l.lotNo === selectedLotNo);
+                  if (matchedLot && matchedLot.batchNo) {
+                    setBatchNo(matchedLot.batchNo);
+                  }
+                }}
+                className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue font-semibold"
+              >
+                <option value="">-- Manual / Auto FIFO --</option>
+                {activeLots.map(l => (
+                  <option key={l.lotNo} value={l.lotNo}>
+                    {l.lotNo} (Available: {l.quantity} {l.unit}) {l.batchNo ? `· Batch: ${l.batchNo}` : ''} {l.expiryDate ? `· Exp: ${l.expiryDate}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Batch & Lot */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-app-secondary dark:text-app-darkSecondary mb-1 uppercase tracking-wider">
                 Batch No.
@@ -401,19 +428,6 @@ export const GoodsIssueDrawer: React.FC<GoodsIssueDrawerProps> = ({
                 value={lot}
                 onChange={e => setLot(e.target.value)}
                 placeholder="e.g. LOT-A"
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-app-secondary dark:text-app-darkSecondary mb-1 uppercase tracking-wider">
-                Serial Number
-              </label>
-              <input
-                type="text"
-                value={serialNumber}
-                onChange={e => setSerialNumber(e.target.value)}
-                placeholder="Optional S/N"
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
               />
             </div>

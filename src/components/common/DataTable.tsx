@@ -38,6 +38,8 @@ interface DataTableProps<T> {
   stickyHeader?: boolean;
   className?: string;
   pagination?: PaginationConfig;
+  expandedRowIds?: Set<string>;
+  renderExpandedRow?: (item: T) => React.ReactNode;
 }
 
 export function DataTable<T>({
@@ -55,6 +57,8 @@ export function DataTable<T>({
   stickyHeader = true,
   className = "",
   pagination,
+  expandedRowIds,
+  renderExpandedRow,
 }: DataTableProps<T>) {
   return (
     <div className={`w-full overflow-hidden border border-app-border dark:border-app-darkBorder rounded-2xl bg-white dark:bg-app-darkSurface shadow-subtle ${className}`}>
@@ -110,33 +114,45 @@ export function DataTable<T>({
               data.map((item) => {
                 const rowKey = keyExtractor(item);
                 const isSelected = selectedRowId === rowKey;
+                const isExpanded = expandedRowIds ? expandedRowIds.has(rowKey) : false;
+
                 return (
-                  <tr
-                    key={rowKey}
-                    onClick={() => onRowClick && onRowClick(item)}
-                    className={`h-[54px] transition-colors ${
-                      onRowClick ? 'cursor-pointer' : ''
-                    } ${
-                      isSelected
-                        ? 'bg-brand-softBlue/80 dark:bg-blue-950/40 text-brand-blue font-medium'
-                        : 'hover:bg-app-bg/60 dark:hover:bg-app-darkBorder/40 text-app-text dark:text-app-darkText'
-                    }`}
-                  >
-                    {columns.map((col) => (
-                      <td
-                        key={col.id}
-                        className={`py-3 px-4 h-[54px] align-middle ${
-                          col.align === 'right'
-                            ? 'text-right'
-                            : col.align === 'center'
-                            ? 'text-center'
-                            : 'text-left'
-                        } ${col.className || ''}`}
-                      >
-                        {col.accessor ? col.accessor(item) : (item as any)[col.id]}
-                      </td>
-                    ))}
-                  </tr>
+                  <React.Fragment key={rowKey}>
+                    <tr
+                      onClick={() => onRowClick && onRowClick(item)}
+                      className={`h-[54px] transition-colors ${
+                        onRowClick ? 'cursor-pointer' : ''
+                      } ${
+                        isSelected
+                          ? 'bg-brand-softBlue/80 dark:bg-blue-950/40 text-brand-blue font-medium'
+                          : isExpanded
+                          ? 'bg-blue-50/40 dark:bg-blue-950/20 text-app-text dark:text-app-darkText'
+                          : 'hover:bg-app-bg/60 dark:hover:bg-app-darkBorder/40 text-app-text dark:text-app-darkText'
+                      }`}
+                    >
+                      {columns.map((col) => (
+                        <td
+                          key={col.id}
+                          className={`py-3 px-4 h-[54px] align-middle ${
+                            col.align === 'right'
+                              ? 'text-right'
+                              : col.align === 'center'
+                              ? 'text-center'
+                              : 'text-left'
+                          } ${col.className || ''}`}
+                        >
+                          {col.accessor ? col.accessor(item) : (item as any)[col.id]}
+                        </td>
+                      ))}
+                    </tr>
+                    {isExpanded && renderExpandedRow && (
+                      <tr className="bg-slate-50/80 dark:bg-slate-900/40 border-b border-app-border dark:border-app-darkBorder animate-fadeIn">
+                        <td colSpan={columns.length} className="p-0">
+                          {renderExpandedRow(item)}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })
             )}

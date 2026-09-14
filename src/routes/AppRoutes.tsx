@@ -11,6 +11,8 @@ import { Sidebar } from '../components/layout/Sidebar';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { HomePage } from '../pages/home/HomePage';
 import { MasterDataPage } from '../pages/stock/MasterDataPage';
+import { MaterialRequestPage } from '../pages/stock/MaterialRequestPage';
+import { StoreApprovalPage } from '../pages/stock/StoreApprovalPage';
 import { StockBalancePage } from '../pages/stock/StockBalancePage';
 import { TransactionPage } from '../pages/stock/TransactionPage';
 import { InventoryReportPage } from '../pages/stock/InventoryReportPage';
@@ -18,6 +20,7 @@ import { UserManagementPage } from '../pages/admin/UserManagementPage';
 import { RoleManagementPage } from '../pages/admin/RoleManagementPage';
 import { AccessDeniedPage } from '../pages/common/AccessDeniedPage';
 import { ComingSoonPage } from '../pages/common/ComingSoonPage';
+import { StoreApprovalNotifier } from '../components/stock/StoreApprovalNotifier';
 
 // Authenticated Layout Wrapper
 const AppLayout: React.FC = () => {
@@ -44,6 +47,7 @@ const AppLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+      <StoreApprovalNotifier />
     </div>
   );
 };
@@ -80,6 +84,14 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/stock/master-data"
           element={<ProtectedRoute permission="MASTER_VIEW" element={<MasterDataPage />} />}
+        />
+        <Route
+          path="/stock/request"
+          element={<ProtectedRoute permission="REQUEST_VIEW" element={<MaterialRequestPage />} />}
+        />
+        <Route
+          path="/stock/approval"
+          element={<ProtectedRoute permission="STORE_APPROVAL" element={<StoreApprovalPage />} />}
         />
         <Route
           path="/stock/balance"

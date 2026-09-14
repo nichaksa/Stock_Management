@@ -240,7 +240,7 @@ export const TransactionDocumentDetailDrawer: React.FC<TransactionDocumentDetail
                       {item.supplier && <span className="text-[10px] text-app-muted block">{item.supplier}</span>}
                     </td>
                     <td className="py-2.5 px-3 text-[11px] text-app-secondary">
-                      {item.batchNumber || item.lot || '-'} {item.serialNumber ? `(SN: ${item.serialNumber})` : ''}
+                      {item.lot ? `Lot: ${item.lot}` : item.batchNumber ? `Batch: ${item.batchNumber}` : '-'}
                     </td>
                     <td className={`py-2.5 px-3 text-right font-bold ${isGr ? 'text-gr' : isGi ? 'text-gi' : 'text-app-text'}`}>
                       {isGr ? `+${item.quantity}` : isGi ? `-${item.quantity}` : item.quantity} {item.unit || 'EA'}

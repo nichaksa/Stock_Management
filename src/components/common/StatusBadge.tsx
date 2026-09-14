@@ -101,6 +101,14 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md', s
           dot: 'bg-indigo-600 dark:bg-indigo-400',
           label: 'ADJUSTMENT',
         };
+      case 'TRANSFER':
+        return {
+          bg: 'bg-purple-50 dark:bg-purple-950/40',
+          text: 'text-purple-700 dark:text-purple-300',
+          border: 'border-purple-200 dark:border-purple-800/60',
+          dot: 'bg-purple-600 dark:bg-purple-400',
+          label: language === 'th' ? 'โอนย้าย' : 'TRANSFER',
+        };
       default:
         return {
           bg: 'bg-gray-50 dark:bg-gray-800',

@@ -7,7 +7,6 @@ import { InventoryByPlantWidget, PlantInventorySummary } from '../../components/
 import { InventoryCompositionDonut, TypeCompositionItem } from '../../components/stock/InventoryCompositionDonut';
 import { MovementByPlantChart, PlantMovementComparison } from '../../components/stock/MovementByPlantChart';
 import { ZoneMapWidget, ZoneMapItem } from '../../components/stock/ZoneMapWidget';
-import { PendingTasksPanel } from '../../components/stock/PendingTasksPanel';
 import { RecentMovementsTable } from '../../components/stock/RecentMovementsTable';
 import { MaterialDetailDrawer } from '../../components/stock/MaterialDetailDrawer';
 import { TransactionDetailDrawer } from '../../components/stock/TransactionDetailDrawer';
@@ -17,14 +16,14 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { exportInventoryReportToCsv } from '../../utils/export';
+import { getAllPlants } from '../../utils/plantStoreMaster';
 import {
   getStockAtDateTime,
   calculateStockStatus,
   getMovementTrendGranularData,
   ChartGranularity,
 } from '../../utils/stockCalculation';
-import { Material, StockTransaction, PendingTask, WorkflowStatus } from '../../types/stock';
-import { INITIAL_PENDING_TASKS } from '../../mock/pendingTasks';
+import { Material, StockTransaction } from '../../types/stock';
 import { Download, RefreshCw, BarChart2 } from 'lucide-react';
 
 export const InventoryReportPage: React.FC = () => {
@@ -43,6 +42,7 @@ export const InventoryReportPage: React.FC = () => {
     return {
       viewMode: 'OVERVIEW',
       selectedPlant: 'All Plants',
+      selectedStore: 'All Stores',
       startDate: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
       startHour: '00',
       startMinute: '00',
@@ -54,16 +54,6 @@ export const InventoryReportPage: React.FC = () => {
 
   // Chart Granularity State (Daily, Monthly, Yearly)
   const [trendGranularity, setTrendGranularity] = useState<ChartGranularity>('Daily');
-
-  // Pending Tasks State with local workflow mutations
-  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>(() => {
-    try {
-      const saved = localStorage.getItem('zycoda_pending_tasks_v1');
-      return saved ? JSON.parse(saved) : INITIAL_PENDING_TASKS;
-    } catch {
-      return INITIAL_PENDING_TASKS;
-    }
-  });
 
   // Drawers
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
@@ -79,17 +69,30 @@ export const InventoryReportPage: React.FC = () => {
   }, [globalFilter.endDate, globalFilter.endHour, globalFilter.endMinute]);
 
   // CUMULATIVE INVENTORY BALANCE AT END DATE
-  // Critical calculation: cumulative sum of all transactions up to endDateTimeStr!
+  // Critical calculation: cumulative sum of all transactions up to endDateTimeStr with Plant + Store filtering!
   const materialsWithStockAtEndDate = useMemo(() => {
-    const filteredByPlant = materials.filter(m => {
-      if (globalFilter.selectedPlant !== 'All Plants' && m.plant !== globalFilter.selectedPlant) {
+    const isPlantFilter = globalFilter.selectedPlant !== 'All Plants' && globalFilter.selectedPlant !== 'ALL';
+    const isStoreFilter = globalFilter.selectedStore !== 'All Stores' && globalFilter.selectedStore !== 'ALL';
+
+    const filteredByPlantAndStore = materials.filter(m => {
+      if (isPlantFilter && m.plant !== globalFilter.selectedPlant) {
         return false;
+      }
+      if (isStoreFilter && (m.storageLocation || 'MAIN') !== globalFilter.selectedStore) {
+        const hasStoreTx = transactions.some(t => t.materialId === m.id && t.storageLocation === globalFilter.selectedStore);
+        if (!hasStoreTx) return false;
       }
       return true;
     });
 
-    return filteredByPlant.map(m => {
-      const currentStock = getStockAtDateTime(m.id, transactions, endDateTimeStr);
+    return filteredByPlantAndStore.map(m => {
+      const currentStock = getStockAtDateTime(
+        m.id,
+        transactions,
+        endDateTimeStr,
+        isPlantFilter ? globalFilter.selectedPlant : undefined,
+        isStoreFilter ? globalFilter.selectedStore : undefined
+      );
       const stockStatus = calculateStockStatus(m, currentStock);
       const totalValue = currentStock * (m.standardPrice || 0);
 
@@ -99,8 +102,13 @@ export const InventoryReportPage: React.FC = () => {
         stockStatus,
         totalValue,
       };
+    }).filter(m => {
+      if (isStoreFilter) {
+        return m.currentStock > 0 || (m.storageLocation || 'MAIN') === globalFilter.selectedStore;
+      }
+      return true;
     });
-  }, [materials, transactions, endDateTimeStr, globalFilter.selectedPlant]);
+  }, [materials, transactions, endDateTimeStr, globalFilter.selectedPlant, globalFilter.selectedStore]);
 
   // 1. KPI Metrics
   const kpiMetrics: InventoryKpiMetrics = useMemo(() => {
@@ -153,16 +161,17 @@ export const InventoryReportPage: React.FC = () => {
     };
   }, [materialsWithStockAtEndDate]);
 
-  // 2. Trend Time Series Data (GR vs GI with Daily, Monthly, Yearly granularity)
+  // 2. Trend Time Series Data (GR vs GI with Daily, Monthly, Yearly granularity + Plant & Store filter)
   const movementTrendData = useMemo(() => {
     return getMovementTrendGranularData(
       transactions,
       startDateTimeStr,
       endDateTimeStr,
       trendGranularity,
-      globalFilter.selectedPlant
+      globalFilter.selectedPlant,
+      globalFilter.selectedStore
     );
-  }, [transactions, startDateTimeStr, endDateTimeStr, trendGranularity, globalFilter.selectedPlant]);
+  }, [transactions, startDateTimeStr, endDateTimeStr, trendGranularity, globalFilter.selectedPlant, globalFilter.selectedStore]);
 
   // 3. Inventory Composition by Material Type
   const compositionData: TypeCompositionItem[] = useMemo(() => {
@@ -188,9 +197,10 @@ export const InventoryReportPage: React.FC = () => {
 
   // 4. Inventory by Plant Breakdown
   const plantSummaries: PlantInventorySummary[] = useMemo(() => {
-    const plants = ['DEMO', 'PLANT-01', 'PLANT-02'];
+    const plants = getAllPlants(materials).map(p => p.code);
     const totalValAll = kpiMetrics.totalInventoryVal || 1;
     const totalQtyAll = kpiMetrics.totalInventoryQty || 1;
+    const isStoreFilter = globalFilter.selectedStore !== 'All Stores' && globalFilter.selectedStore !== 'ALL';
 
     return plants.map(plantName => {
       const plantMats = materials.filter(m => m.plant === plantName);
@@ -198,7 +208,13 @@ export const InventoryReportPage: React.FC = () => {
       let totalValue = 0;
 
       plantMats.forEach(m => {
-        const stock = getStockAtDateTime(m.id, transactions, endDateTimeStr);
+        const stock = getStockAtDateTime(
+          m.id,
+          transactions,
+          endDateTimeStr,
+          plantName,
+          isStoreFilter ? globalFilter.selectedStore : undefined
+        );
         totalQuantity += stock;
         totalValue += stock * (m.standardPrice || 0);
       });
@@ -215,19 +231,21 @@ export const InventoryReportPage: React.FC = () => {
         percentage: Math.min(100, Math.max(0, percentage)),
       };
     });
-  }, [materials, transactions, endDateTimeStr, kpiMetrics, globalFilter.viewMode]);
+  }, [materials, transactions, endDateTimeStr, kpiMetrics, globalFilter.viewMode, globalFilter.selectedStore]);
 
   // 5. Goods Issue vs Goods Receipt by FL (Plant) Comparison Chart Data
   const plantMovementData: PlantMovementComparison[] = useMemo(() => {
-    const allPlants = ['DEMO', 'PLANT-01', 'PLANT-02'];
-    const targetPlants = globalFilter.selectedPlant === 'All Plants'
+    const allPlants = getAllPlants(materials).map(p => p.code);
+    const targetPlants = globalFilter.selectedPlant === 'All Plants' || globalFilter.selectedPlant === 'ALL'
       ? allPlants
       : allPlants.filter(p => p === globalFilter.selectedPlant);
 
     const startTime = new Date(startDateTimeStr).getTime();
     const endTime = new Date(endDateTimeStr).getTime();
+    const isStoreFilter = globalFilter.selectedStore !== 'All Stores' && globalFilter.selectedStore !== 'ALL';
 
     const inRangeTx = transactions.filter(t => {
+      if (isStoreFilter && t.storageLocation !== globalFilter.selectedStore) return false;
       const tTime = new Date(t.createdAt).getTime();
       return tTime >= startTime && tTime <= endTime;
     });
@@ -269,7 +287,7 @@ export const InventoryReportPage: React.FC = () => {
         giValue,
       };
     });
-  }, [transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant]);
+  }, [materials, transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant, globalFilter.selectedStore]);
 
   // 6. Zone Map Data (Grouped by Storage Location / SLoc)
   const zoneMapData: ZoneMapItem[] = useMemo(() => {
@@ -306,96 +324,34 @@ export const InventoryReportPage: React.FC = () => {
     });
   }, [materialsWithStockAtEndDate, kpiMetrics, globalFilter.viewMode]);
 
-  // 7. Recent Movements within Filter Range
+  // 7. Recent Movements within Filter Range (Plant + Store Filter)
   const filteredRecentMovements = useMemo(() => {
     const startTime = new Date(startDateTimeStr).getTime();
     const endTime = new Date(endDateTimeStr).getTime();
+    const isPlantFilter = globalFilter.selectedPlant !== 'All Plants' && globalFilter.selectedPlant !== 'ALL';
+    const isStoreFilter = globalFilter.selectedStore !== 'All Stores' && globalFilter.selectedStore !== 'ALL';
 
     return transactions
       .filter(tx => {
-        if (globalFilter.selectedPlant !== 'All Plants' && tx.plant !== globalFilter.selectedPlant) {
+        if (isPlantFilter && tx.plant !== globalFilter.selectedPlant) {
+          return false;
+        }
+        if (isStoreFilter && tx.storageLocation !== globalFilter.selectedStore) {
           return false;
         }
         const txTime = new Date(tx.createdAt).getTime();
         return txTime >= startTime && txTime <= endTime;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant]);
-
-  // 8. Filtered Pending Tasks
-  const filteredPendingTasks = useMemo(() => {
-    if (globalFilter.selectedPlant === 'All Plants') return pendingTasks;
-    return pendingTasks.filter(t => t.plant === globalFilter.selectedPlant);
-  }, [pendingTasks, globalFilter.selectedPlant]);
-
-  // Workflow handlers
-  const handleAdvanceWorkflow = (taskId: string, nextStatus: WorkflowStatus) => {
-    const userName = currentUser?.fullName || currentUser?.username || 'Admin Store Keeper';
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const timeStamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-
-    setPendingTasks(prev => {
-      const updated = prev.map(task => {
-        if (task.id !== taskId) return task;
-
-        const updatedTimeline = task.timeline.map(step => {
-          if (step.step === nextStatus) {
-            return {
-              ...step,
-              completed: true,
-              active: true,
-              timestamp: timeStamp,
-              responsibleUser: userName,
-            };
-          }
-          if (
-            (nextStatus === 'ACCEPT' && (step.step === 'PENDING' || step.step === 'CREATED')) ||
-            (nextStatus === 'FINISH' && (step.step === 'PENDING' || step.step === 'CREATED' || step.step === 'ACCEPT')) ||
-            (nextStatus === 'CONFIRM')
-          ) {
-            return { ...step, completed: true, active: false };
-          }
-          return step;
-        });
-
-        return {
-          ...task,
-          status: nextStatus,
-          timeline: updatedTimeline,
-        };
-      });
-
-      localStorage.setItem('zycoda_pending_tasks_v1', JSON.stringify(updated));
-      return updated;
-    });
-
-    addToast(`Workflow step advanced to ${nextStatus}`, 'success');
-  };
-
-  const handleRejectWorkflow = (
-    taskId: string,
-    rejectType: 'REJECTED_STORE' | 'REJECTED_MAINTENANCE',
-    reason: string
-  ) => {
-    setPendingTasks(prev => {
-      const updated = prev.map(task => {
-        if (task.id !== taskId) return task;
-        return {
-          ...task,
-          status: rejectType,
-          rejectReason: reason,
-        };
-      });
-      localStorage.setItem('zycoda_pending_tasks_v1', JSON.stringify(updated));
-      return updated;
-    });
-
-    addToast(`Task rejected: ${reason}`, 'warning');
-  };
+  }, [transactions, startDateTimeStr, endDateTimeStr, globalFilter.selectedPlant, globalFilter.selectedStore]);
 
   const handleExport = () => {
-    exportInventoryReportToCsv(materials, transactions);
+    exportInventoryReportToCsv(
+      materials,
+      transactions,
+      globalFilter.selectedPlant,
+      globalFilter.selectedStore
+    );
     addToast('Inventory Analytics exported to CSV', 'success');
   };
 
@@ -404,14 +360,14 @@ export const InventoryReportPage: React.FC = () => {
       title={t('inventory_report')}
       subtitle={
         isTh
-          ? 'แดชบอร์ดวิเคราะห์สถานะสินค้าคงคลัง ยอดสะสมตามช่วงเวลา และระบบคำขอเบิก PickList'
-          : 'Executive analytics dashboard, cumulative inventory valuation & PickList workflow tracking'
+          ? 'แดชบอร์ดวิเคราะห์สถานะสินค้าคงคลังและยอดสะสมตามช่วงเวลา'
+          : 'Executive analytics dashboard and cumulative inventory valuation'
       }
       actions={
         <button
           type="button"
           onClick={handleExport}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border border-app-border dark:border-app-darkBorder bg-white dark:bg-app-darkSurface text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText shadow-subtle hover:bg-app-bg transition-colors"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border border-app-border dark:border-app-darkBorder bg-white dark:bg-app-darkSurface text-app-secondary dark:text-app-darkSecondary hover:text-app-text dark:hover:text-app-darkText shadow-subtle hover:bg-app-bg transition-colors cursor-pointer"
         >
           <Download className="w-4 h-4 text-app-muted" />
           <span>{t('export_csv')}</span>
@@ -422,6 +378,7 @@ export const InventoryReportPage: React.FC = () => {
         {/* 1. GLOBAL FILTER SECTION */}
         <GlobalFilterBar
           filter={globalFilter}
+          materials={materials}
           onApplyFilter={(newFilter) => {
             setGlobalFilter(newFilter);
             addToast('Analytics filter applied', 'info');
@@ -475,14 +432,7 @@ export const InventoryReportPage: React.FC = () => {
           totalInventoryVal={kpiMetrics.totalInventoryVal}
         />
 
-        {/* 6. WORKFLOW & TRANSACTION ROW: PENDING TASKS PANEL */}
-        <PendingTasksPanel
-          tasks={filteredPendingTasks}
-          onAdvanceWorkflow={handleAdvanceWorkflow}
-          onRejectWorkflow={handleRejectWorkflow}
-        />
-
-        {/* 7. RECENT MOVEMENTS TABLE (WITH FINDER & 10/20/50/100 PAGINATION) */}
+        {/* 6. RECENT MOVEMENTS TABLE (WITH FINDER & 10/20/50/100 PAGINATION) */}
         <RecentMovementsTable
           transactions={filteredRecentMovements}
           onRowClick={(tx) => setSelectedTransaction(tx)}

@@ -1,4 +1,4 @@
-import { Material, StockTransaction, StockStatus, TransactionDocument } from '../types/stock';
+import { Material, StockTransaction, StockStatus, TransactionDocument, StockLotItem, MaterialWithStock, ItemWithStock } from '../types/stock';
 
 /**
  * Checks if a PR ID already exists in any recorded transaction documents or stock transactions.
@@ -62,15 +62,26 @@ export function checkDuplicatePicklist(
 
 /**
  * Calculates current stock quantity for a material from all historical transactions.
+ * Uses the sum of transaction quantities as the single source of truth.
  */
-export function getCurrentStock(materialId: string, transactions: StockTransaction[]): number {
-  const itemTx = transactions
-    .filter(t => t.materialId === materialId)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+export function getCurrentStock(
+  materialId: string,
+  transactions: StockTransaction[],
+  filterPlant?: string,
+  filterStore?: string
+): number {
+  let itemTx = transactions.filter(t => t.materialId === materialId);
 
-  if (itemTx.length === 0) return 0;
-  // Last transaction's balanceAfter is the current stock
-  return itemTx[itemTx.length - 1].balanceAfter;
+  if (filterPlant && filterPlant !== 'ALL' && filterPlant !== 'All Plants') {
+    itemTx = itemTx.filter(t => t.plant === filterPlant);
+  }
+
+  if (filterStore && filterStore !== 'ALL' && filterStore !== 'All Stores') {
+    itemTx = itemTx.filter(t => t.storageLocation === filterStore);
+  }
+
+  const total = itemTx.reduce((sum, tx) => sum + (tx.quantity || 0), 0);
+  return Math.max(0, total);
 }
 
 /**
@@ -239,24 +250,29 @@ function formatChartDate(isoString: string): string {
 
 /**
  * Calculates the exact cumulative stock quantity for a material at any target DateTime.
- * Uses all historical transactions created on or before targetDateTimeStr.
+ * Uses all historical transactions created on or before targetDateTimeStr with optional plant/store filters.
  */
 export function getStockAtDateTime(
   materialId: string,
   transactions: StockTransaction[],
-  targetDateTimeStr: string
+  targetDateTimeStr: string,
+  filterPlant?: string,
+  filterStore?: string
 ): number {
   const targetTime = new Date(targetDateTimeStr).getTime();
   
-  const priorTransactions = transactions
-    .filter(t => t.materialId === materialId && new Date(t.createdAt).getTime() <= targetTime)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  let priorTransactions = transactions
+    .filter(t => t.materialId === materialId && new Date(t.createdAt).getTime() <= targetTime);
 
-  if (priorTransactions.length === 0) {
-    return 0;
+  if (filterPlant && filterPlant !== 'ALL' && filterPlant !== 'All Plants') {
+    priorTransactions = priorTransactions.filter(t => t.plant === filterPlant);
+  }
+  if (filterStore && filterStore !== 'ALL' && filterStore !== 'All Stores') {
+    priorTransactions = priorTransactions.filter(t => t.storageLocation === filterStore);
   }
 
-  return priorTransactions[priorTransactions.length - 1].balanceAfter;
+  const total = priorTransactions.reduce((sum, tx) => sum + (tx.quantity || 0), 0);
+  return Math.max(0, total);
 }
 
 export type ChartGranularity = 'Daily' | 'Monthly' | 'Yearly';
@@ -280,13 +296,15 @@ export function getMovementTrendGranularData(
   startDateTimeStr: string,
   endDateTimeStr: string,
   granularity: ChartGranularity,
-  selectedPlant: string = 'All Plants'
+  selectedPlant: string = 'All Plants',
+  selectedStore: string = 'All Stores'
 ): MovementGranularPoint[] {
   const startTime = new Date(startDateTimeStr).getTime();
   const endTime = new Date(endDateTimeStr).getTime();
 
   const inRangeTx = transactions.filter(t => {
-    if (selectedPlant !== 'All Plants' && t.plant !== selectedPlant) return false;
+    if (selectedPlant !== 'All Plants' && selectedPlant !== 'ALL' && t.plant !== selectedPlant) return false;
+    if (selectedStore !== 'All Stores' && selectedStore !== 'ALL' && t.storageLocation !== selectedStore) return false;
     const tTime = new Date(t.createdAt).getTime();
     return tTime >= startTime && tTime <= endTime;
   });
@@ -373,5 +391,182 @@ export function getMovementTrendGranularData(
     }));
 
   return sortedPoints;
+}
+
+/**
+ * Derives real-time lot balances across all materials, stores, and bins
+ * Ensures: Sum(Lot Quantities) = Material Total Stock in that plant/store
+ */
+export function calculateLotBalances(
+  materials: Material[],
+  transactions: StockTransaction[],
+  filterPlant?: string,
+  filterStore?: string
+): StockLotItem[] {
+  const lotMap = new Map<string, StockLotItem>();
+  const materialMap = new Map<string, Material>();
+  materials.forEach(m => materialMap.set(m.id, m));
+
+  const sortedTx = [...transactions].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  sortedTx.forEach(tx => {
+    const mat = materialMap.get(tx.materialId);
+    const plant = tx.plant || mat?.plant || 'DEMO';
+    const store = tx.storageLocation || mat?.storageLocation || 'MAIN';
+    const storageBin = tx.storageBin || mat?.storageBin || 'BIN-01';
+    const lot = tx.lot || tx.lotNo || 'LOT-2608-01';
+    const batchNumber = tx.batchNumber || tx.batchNo || 'B-2608';
+    const key = `${plant}__${store}__${storageBin}__${tx.materialId}__${lot}`;
+
+    if (!lotMap.has(key)) {
+      lotMap.set(key, {
+        id: `lot-${plant}-${tx.materialId}-${lot}-${store}-${storageBin}`.toLowerCase().replace(/\s+/g, '-'),
+        plant,
+        store,
+        storageLocation: store,
+        storageBin,
+        materialId: tx.materialId,
+        materialCode: tx.materialCode || mat?.materialCode || '',
+        description: mat?.description || tx.description || '',
+        materialType: mat?.materialType || 'SPARE_PARTS',
+        unit: mat?.unit || 'PC',
+        lot,
+        lotNo: lot,
+        batchNumber,
+        batchNo: batchNumber,
+        quantity: 0,
+        standardPrice: mat?.standardPrice || tx.pricePerUnit || 0,
+        totalValue: 0,
+        receivedDate: tx.receivedDate || (tx.transactionType === 'GR' || tx.transactionType === 'OPENING' ? tx.createdAt.slice(0, 10) : undefined),
+        expiryDate: tx.expiryDate,
+        lastUpdated: tx.createdAt,
+      });
+    }
+
+    const entry = lotMap.get(key)!;
+    entry.quantity += tx.quantity;
+    entry.totalValue = Math.max(0, entry.quantity * entry.standardPrice);
+    entry.lastUpdated = tx.createdAt;
+    if (batchNumber) {
+      entry.batchNumber = batchNumber;
+      entry.batchNo = batchNumber;
+    }
+    if (tx.expiryDate) entry.expiryDate = tx.expiryDate;
+    if ((tx.transactionType === 'GR' || tx.transactionType === 'OPENING') && !entry.receivedDate) {
+      entry.receivedDate = tx.receivedDate || tx.createdAt.slice(0, 10);
+    }
+  });
+
+  // Ensure every material from the catalog with positive balance is represented
+  materials.forEach(mat => {
+    const currentStock = getCurrentStock(mat.id, transactions);
+    if (currentStock > 0) {
+      const existingLots = Array.from(lotMap.values()).filter(l => l.materialId === mat.id);
+      if (existingLots.length === 0) {
+        const plant = mat.plant || 'DEMO';
+        const store = mat.storageLocation || 'MAIN';
+        const storageBin = mat.storageBin || 'BIN-01';
+        const lot = 'LOT-2608-01';
+        const key = `${plant}__${store}__${storageBin}__${mat.id}__${lot}`;
+        lotMap.set(key, {
+          id: `lot-${plant}-${mat.id}-${lot}-${store}-${storageBin}`.toLowerCase().replace(/\s+/g, '-'),
+          plant,
+          store,
+          storageLocation: store,
+          storageBin,
+          materialId: mat.id,
+          materialCode: mat.materialCode,
+          description: mat.description,
+          materialType: mat.materialType,
+          unit: mat.unit,
+          lot,
+          lotNo: lot,
+          batchNumber: 'B-260801',
+          batchNo: 'B-260801',
+          quantity: currentStock,
+          standardPrice: mat.standardPrice || 0,
+          totalValue: currentStock * (mat.standardPrice || 0),
+          lastUpdated: mat.updatedAt || mat.createdAt,
+        });
+      }
+    }
+  });
+
+  let results = Array.from(lotMap.values()).filter(l => l.quantity > 0);
+
+  if (filterPlant && filterPlant !== 'All Plants') {
+    results = results.filter(l => l.plant === filterPlant);
+  }
+
+  if (filterStore && filterStore !== 'ALL' && filterStore !== 'All Stores') {
+    results = results.filter(l => l.store === filterStore || l.storageLocation === filterStore);
+  }
+
+  return results;
+}
+
+/**
+ * Groups materials into high-level Items (Item -> Material -> Lot hierarchy).
+ * Real-time calculation: Item Total Stock = Sum of all Material stock = Sum of all Lot stock
+ */
+export function groupMaterialsByItem(
+  materials: MaterialWithStock[],
+  lotBalances: StockLotItem[] = []
+): ItemWithStock[] {
+  const itemMap = new Map<string, ItemWithStock>();
+
+  materials.forEach(mat => {
+    // Derive item identifier and name
+    const itemName = mat.itemName || mat.description.split(',')[0].trim() || 'General Item';
+    const itemCode = mat.itemCode || `ITEM-${itemName.replace(/[^a-zA-Z0-9ก-๙]/g, '-').toUpperCase()}`;
+    const itemId = `item-${itemCode.toLowerCase()}`;
+
+    if (!itemMap.has(itemId)) {
+      itemMap.set(itemId, {
+        itemId,
+        itemCode,
+        itemName,
+        description: mat.itemName ? `${mat.itemName}` : mat.description,
+        unit: mat.unit,
+        plant: mat.plant,
+        totalStock: 0,
+        totalValue: 0,
+        materialCount: 0,
+        lotCount: 0,
+        stockStatus: 'NORMAL',
+        materials: [],
+      });
+    }
+
+    const item = itemMap.get(itemId)!;
+    item.materials.push(mat);
+    item.totalStock += mat.currentStock;
+    item.totalValue += mat.totalValue;
+    item.materialCount += 1;
+  });
+
+  // Calculate lot count and overall item stock status
+  itemMap.forEach(item => {
+    const matIds = new Set(item.materials.map(m => m.id));
+    const itemLots = lotBalances.filter(l => matIds.has(l.materialId));
+    item.lotCount = itemLots.length > 0 ? itemLots.length : item.materials.reduce((acc, m) => acc + (m.currentStock > 0 ? 1 : 0), 0);
+
+    // Determine aggregate status
+    if (item.totalStock === 0) {
+      item.stockStatus = 'OUT_OF_STOCK';
+    } else if (item.materials.some(m => m.stockStatus === 'UNDERMIN' || m.stockStatus === 'OUT_OF_STOCK')) {
+      item.stockStatus = 'UNDERMIN';
+    } else if (item.materials.some(m => m.stockStatus === 'REORDERING')) {
+      item.stockStatus = 'REORDERING';
+    } else if (item.materials.some(m => m.stockStatus === 'OVERMAX')) {
+      item.stockStatus = 'OVERMAX';
+    } else {
+      item.stockStatus = 'NORMAL';
+    }
+  });
+
+  return Array.from(itemMap.values());
 }
 

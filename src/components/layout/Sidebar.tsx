@@ -15,9 +15,11 @@ import {
   Activity,
   Boxes,
   ShieldAlert,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useStock } from '../../context/StockContext';
 import { PermissionKey } from '../../types/auth';
 
 interface SidebarProps {
@@ -38,8 +40,17 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, currentUser } = useAuth();
   const { t } = useLanguage();
+  const { materialRequests } = useStock();
+
+  const isStoreApprover = hasPermission('STORE_APPROVAL') || currentUser?.roleName === 'Store' || currentUser?.roleName === 'Admin';
+  const pendingStoreCount = React.useMemo(() => {
+    if (!isStoreApprover) return 0;
+    return materialRequests.filter(
+      r => r.status === 'PENDING_APPROVAL' || r.status === 'STORE_REVIEW'
+    ).length;
+  }, [materialRequests, isStoreApprover]);
 
   const sections: NavSection[] = [
     {
@@ -50,6 +61,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
           path: '/stock/master-data',
           icon: <Database className="w-4 h-4" />,
           permission: 'MASTER_VIEW',
+        },
+        {
+          name: t('material_request') || 'Material Request',
+          path: '/stock/request',
+          icon: <ClipboardList className="w-4 h-4" />,
+          permission: 'REQUEST_VIEW',
+        },
+        {
+          name: t('store_approval') || 'Store Approval',
+          path: '/stock/approval',
+          icon: <FileCheck2 className="w-4 h-4 text-brand-blue" />,
+          permission: 'STORE_APPROVAL',
         },
         {
           name: t('stock_balance'),
@@ -127,9 +150,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
 
   return (
     <aside
-      className={`fixed left-0 top-16 h-[calc(100vh-64px)] bg-white dark:bg-app-darkSurface border-r border-[#E5EAF1] dark:border-app-darkBorder z-30 transition-all duration-200 flex flex-col ${
-        isCollapsed ? 'w-16' : 'w-60'
-      }`}
+      className={`fixed left-0 top-16 h-[calc(100vh-64px)] bg-white dark:bg-app-darkSurface border-r border-[#E5EAF1] dark:border-app-darkBorder z-30 transition-all duration-200 flex flex-col ${isCollapsed ? 'w-16' : 'w-60'
+        }`}
     >
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 space-y-4">
         {/* Home Item */}
@@ -138,10 +160,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
             to="/"
             end
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all group relative ${
-                isActive
-                  ? 'bg-brand-blue text-white shadow-sm font-semibold'
-                  : 'text-app-secondary dark:text-app-darkSecondary hover:bg-app-bg dark:hover:bg-app-darkBorder hover:text-app-text dark:hover:text-app-darkText'
+              `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all group relative ${isActive
+                ? 'bg-brand-blue text-white shadow-sm font-semibold'
+                : 'text-app-secondary dark:text-app-darkSecondary hover:bg-app-bg dark:hover:bg-app-darkBorder hover:text-app-text dark:hover:text-app-darkText'
               }`
             }
           >
@@ -181,35 +202,59 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                 <div className="w-8 mx-auto border-t border-app-border dark:border-app-darkBorder my-2" />
               )}
 
-              {visibleItems.map(item => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all group relative ${
-                      isActive
+              {visibleItems.map(item => {
+                const isApproval = item.path === '/stock/approval';
+                const showBadge = isApproval && pendingStoreCount > 0;
+
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all group relative ${isActive
                         ? 'bg-brand-blue text-white shadow-sm font-semibold'
                         : 'text-app-secondary dark:text-app-darkSecondary hover:bg-app-bg dark:hover:bg-app-darkBorder hover:text-app-text dark:hover:text-app-darkText'
-                    }`
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <span className={`shrink-0 ${isActive ? 'text-white' : 'text-app-muted group-hover:text-app-text dark:group-hover:text-app-darkText'}`}>
-                        {item.icon}
-                      </span>
-                      {!isCollapsed && <span className="truncate">{item.name}</span>}
+                      }`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span className={`relative shrink-0 ${isActive ? 'text-white' : 'text-app-muted group-hover:text-app-text dark:group-hover:text-app-darkText'}`}>
+                          {item.icon}
+                          {/* Collapsed Badge Dot / Count */}
+                          {isCollapsed && showBadge && (
+                            <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 text-[9px] font-bold bg-red-500 text-white rounded-full flex items-center justify-center ring-2 ring-white dark:ring-app-darkSurface shadow-sm animate-pulse">
+                              {pendingStoreCount > 99 ? '99+' : pendingStoreCount}
+                            </span>
+                          )}
+                        </span>
+                        {!isCollapsed && (
+                          <div className="flex items-center justify-between flex-1 min-w-0">
+                            <span className="truncate">{item.name}</span>
+                            {showBadge && (
+                              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-red-500 dark:bg-red-600 rounded-full shadow-sm">
+                                {pendingStoreCount}
+                              </span>
+                            )}
+                          </div>
+                        )}
 
-                      {/* Tooltip on collapsed hover */}
-                      {isCollapsed && (
-                        <div className="absolute left-full ml-2 px-2.5 py-1 bg-app-text dark:bg-app-darkSurface text-white dark:text-app-darkText text-xs rounded-lg shadow-modal whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-                          {item.name}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              ))}
+                        {/* Tooltip on collapsed hover */}
+                        {isCollapsed && (
+                          <div className="absolute left-full ml-2 px-2.5 py-1 bg-app-text dark:bg-app-darkSurface text-white dark:text-app-darkText text-xs rounded-lg shadow-modal whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
+                            <span>{item.name}</span>
+                            {showBadge && (
+                              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                {pendingStoreCount}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
             </div>
           );
         })}

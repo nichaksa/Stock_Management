@@ -31,7 +31,7 @@ interface MaterialDetailDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   material: Material | null;
-  initialTab?: 'info' | 'movement';
+  initialTab?: 'info' | 'movement' | 'lots';
 }
 
 export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
@@ -40,11 +40,12 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
   material,
   initialTab = 'info',
 }) => {
-  const { transactions, getItemStock, getItemStatus } = useStock();
+  const { transactions, getItemStock, getItemStatus, getLotBalances } = useStock();
   const { t } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'info' | 'movement'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'movement' | 'lots'>('info');
   const [dateRange, setDateRange] = useState<DateRange>(() => getPresetDateRange('this_month'));
+  const [selectedLotFilter, setSelectedLotFilter] = useState<string>('ALL');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
   useEffect(() => {
     setActiveTab(initialTab);
     setDateRange(getPresetDateRange('this_month'));
+    setSelectedLotFilter('ALL');
     setExpandedRowId(null);
     setHighlightedRowId(null);
   }, [initialTab, material, isOpen]);
@@ -64,13 +66,21 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
   const currentStock = getItemStock(material.id);
   const currentStatus = getItemStatus(material.id);
 
-  // Transactions within selected date range
-  const rangeTransactions = getMovementHistoryInRange(
+  // All active lots for this material
+  const materialLots = getLotBalances().filter(l => l.materialId === material.id);
+
+  // Transactions within selected date range (optionally filtered by lot)
+  const rawRangeTransactions = getMovementHistoryInRange(
     material.id,
     transactions,
     dateRange.startDate,
     dateRange.endDate
   );
+
+  const rangeTransactions = rawRangeTransactions.filter(tx => {
+    if (selectedLotFilter === 'ALL') return true;
+    return (tx.lotNo || tx.lot) === selectedLotFilter;
+  });
 
   // All transactions ever for this item
   const allItemTransactions = transactions.filter(t => t.materialId === material.id);
@@ -184,6 +194,21 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
               <span>{t('stock_movement_tab')}</span>
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-brand-softBlue dark:bg-blue-950/60 text-brand-blue">
                 {allItemTransactions.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('lots')}
+              className={`pb-2.5 px-1 flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === 'lots'
+                  ? 'border-brand-blue text-brand-blue'
+                  : 'border-transparent text-app-secondary dark:text-app-darkSecondary hover:text-app-text'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Lots (ล็อตสินค้า)</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-brand-softBlue dark:bg-blue-950/60 text-brand-blue font-bold">
+                {materialLots.length}
               </span>
             </button>
           </div>
@@ -322,15 +347,35 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
           {/* TAB 2: STOCK MOVEMENT & GRAPH */}
           {activeTab === 'movement' && (
             <div className="space-y-5 animate-fade-in">
-              {/* Date Filter Toolbar */}
+              {/* Filter Toolbar */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-brand-blue" />
-                  <span className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                    {t('date_range')}:
-                  </span>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-brand-blue" />
+                    <span className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
+                      {t('date_range')}:
+                    </span>
+                  </div>
+                  <DateRangePicker value={dateRange} onChange={setDateRange} />
                 </div>
-                <DateRangePicker value={dateRange} onChange={setDateRange} />
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-app-secondary dark:text-app-darkSecondary">
+                    Lot:
+                  </span>
+                  <select
+                    value={selectedLotFilter}
+                    onChange={e => setSelectedLotFilter(e.target.value)}
+                    className="px-2.5 py-1.5 text-xs bg-app-bg dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder rounded-xl font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue font-semibold"
+                  >
+                    <option value="ALL">All Lots ({allItemTransactions.length})</option>
+                    {materialLots.map(l => (
+                      <option key={l.lotNo} value={l.lotNo}>
+                        {l.lotNo} ({l.quantity} {l.unit})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* RECHARTS STOCK BALANCE GRAPH */}
@@ -454,7 +499,7 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
                                   {tx.supplier || '-'}
                                 </td>
                                 <td className="py-2.5 px-3 font-mono text-[11px] text-app-muted whitespace-nowrap">
-                                  {tx.batchNo ? `B: ${tx.batchNo}` : tx.lotNo ? `L: ${tx.lotNo}` : tx.serialNo ? `S: ${tx.serialNo}` : '-'}
+                                  {tx.lotNo ? `L: ${tx.lotNo}` : tx.batchNo ? `B: ${tx.batchNo}` : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 text-center text-app-muted">
                                   {isExpanded ? (
@@ -512,23 +557,16 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
                                         </div>
 
                                         <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
-                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Batch No.</span>
-                                          <span className="font-mono text-app-text dark:text-app-darkText">
-                                            {tx.batchNo || '-'}
-                                          </span>
-                                        </div>
-
-                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
-                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Serial Number (S/N)</span>
-                                          <span className="font-mono text-app-text dark:text-app-darkText">
-                                            {tx.serialNo || '-'}
-                                          </span>
-                                        </div>
-
-                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
                                           <span className="text-app-muted block text-[10px] uppercase font-bold">Lot</span>
                                           <span className="font-mono text-app-text dark:text-app-darkText">
                                             {tx.lotNo || '-'}
+                                          </span>
+                                        </div>
+
+                                        <div className="bg-app-bg/50 dark:bg-app-darkBg/50 p-2 rounded-lg border border-app-border dark:border-app-darkBorder">
+                                          <span className="text-app-muted block text-[10px] uppercase font-bold">Batch No.</span>
+                                          <span className="font-mono text-app-text dark:text-app-darkText">
+                                            {tx.batchNo || '-'}
                                           </span>
                                         </div>
 
@@ -556,6 +594,145 @@ export const MaterialDetailDrawer: React.FC<MaterialDetailDrawerProps> = ({
                             </React.Fragment>
                           );
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: LOTS (ล็อตสินค้า) */}
+          {activeTab === 'lots' && (
+            <div className="space-y-4 animate-fade-in">
+              {/* Summary KPIs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-app-muted block">
+                    Active Lots
+                  </span>
+                  <div className="text-xl font-bold font-mono text-brand-blue mt-1">
+                    {materialLots.length}
+                  </div>
+                  <span className="text-[10px] text-app-muted block mt-0.5">Separate Batches</span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-app-muted block">
+                    Total Lot Stock
+                  </span>
+                  <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                    {materialLots.reduce((sum, l) => sum + l.quantity, 0)}{' '}
+                    <span className="text-xs font-normal text-app-muted">{material.unit}</span>
+                  </div>
+                  <span className="text-[10px] text-app-muted block mt-0.5">
+                    Matches current stock: {currentStock === materialLots.reduce((sum, l) => sum + l.quantity, 0) ? '✓ 100%' : `${currentStock} ${material.unit}`}
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-app-muted block">
+                    Storage Locations
+                  </span>
+                  <div className="text-xs font-bold font-mono text-app-text dark:text-app-darkText mt-1 truncate">
+                    {Array.from(new Set(materialLots.map(l => l.storageBin || material.storageBin).filter(Boolean))).join(', ') || '-'}
+                  </div>
+                  <span className="text-[10px] text-app-muted block mt-0.5">Assigned Bins</span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-app-muted block">
+                    Earliest Expiry
+                  </span>
+                  <div className="text-xs font-bold font-mono text-amber-600 dark:text-amber-400 mt-1 truncate">
+                    {materialLots.filter(l => l.expiryDate).sort((a, b) => (a.expiryDate! > b.expiryDate! ? 1 : -1))[0]?.expiryDate || 'N/A'}
+                  </div>
+                  <span className="text-[10px] text-app-muted block mt-0.5">Shelf Life Status</span>
+                </div>
+              </div>
+
+              {/* LOTS BREAKDOWN TABLE */}
+              <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-app-border dark:border-app-darkBorder">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-brand-blue" />
+                    <h3 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
+                      Active Goods Receipt Lots ({materialLots.length})
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-app-muted">
+                    Click "Movement" to inspect audit transactions for a specific lot
+                  </span>
+                </div>
+
+                {materialLots.length === 0 ? (
+                  <div className="p-8 text-center rounded-2xl border border-dashed border-app-border dark:border-app-darkBorder bg-app-bg/40">
+                    <Layers className="w-8 h-8 text-app-muted mx-auto mb-2" />
+                    <p className="text-xs font-bold text-app-text dark:text-app-darkText">
+                      No Active Lots Recorded
+                    </p>
+                    <p className="text-[11px] text-app-secondary dark:text-app-darkSecondary mt-0.5">
+                      Stock is currently managed at material base level ({currentStock} {material.unit}).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-app-border dark:border-app-darkBorder rounded-xl">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="text-[10px] uppercase font-semibold text-app-secondary dark:text-app-darkSecondary bg-app-bg dark:bg-app-darkBg border-b border-app-border dark:border-app-darkBorder whitespace-nowrap">
+                        <tr>
+                          <th className="py-2.5 px-3">Lot No.</th>
+                          <th className="py-2.5 px-3">Batch No.</th>
+                          <th className="py-2.5 px-3 text-right">Available Qty</th>
+                          <th className="py-2.5 px-3">Plant & Storage</th>
+                          <th className="py-2.5 px-3">Received Date</th>
+                          <th className="py-2.5 px-3">Expiry Date</th>
+                          <th className="py-2.5 px-3 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-app-border dark:divide-app-darkBorder">
+                        {materialLots.map(l => (
+                          <tr key={l.lotNo} className="hover:bg-app-bg/50 dark:hover:bg-app-darkBorder/30 transition-colors">
+                            <td className="py-2.5 px-3 font-mono font-bold text-brand-blue flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-brand-blue"></span>
+                              {l.lotNo}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-app-secondary dark:text-app-darkSecondary">
+                              {l.batchNo || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-right text-emerald-600 dark:text-emerald-400">
+                              {l.quantity} <span className="text-xs font-normal text-app-muted">{l.unit}</span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-app-secondary dark:text-app-darkSecondary">
+                              {l.plant} · {l.storageBin || material.storageBin || '-'} ({l.storageLocation || material.storageLocation || '-'})
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-app-secondary dark:text-app-darkSecondary">
+                              {l.receivedDate ? formatDateTime(l.receivedDate) : '-'}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-app-secondary dark:text-app-darkSecondary">
+                              {l.expiryDate ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium">
+                                  <Calendar className="w-3 h-3" />
+                                  {l.expiryDate}
+                                </span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedLotFilter(l.lot || l.lotNo || '');
+                                  setActiveTab('movement');
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-brand-blue bg-brand-softBlue dark:bg-blue-950/60 hover:bg-brand-blue hover:text-white transition-colors"
+                              >
+                                <History className="w-3 h-3" />
+                                <span>Movement</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

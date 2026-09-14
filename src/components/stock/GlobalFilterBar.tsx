@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
-import { Building2, Calendar, Clock, Filter, Check, Sparkles, DollarSign, Layers } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Building2, Calendar, Clock, Filter, Check, Sparkles, DollarSign, Layers, Warehouse } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { getAllPlants, getStoresForPlant } from '../../utils/plantStoreMaster';
+import { Material } from '../../types/stock';
 
 export type ReportViewMode = 'OVERVIEW' | 'PRICE';
 
 export interface GlobalFilterState {
   viewMode: ReportViewMode;
   selectedPlant: string;
+  selectedStore: string;
   startDate: string; // "YYYY-MM-DD"
   startHour: string; // "00" - "23"
   startMinute: string; // "00" - "59"
@@ -18,12 +21,14 @@ export interface GlobalFilterState {
 interface GlobalFilterBarProps {
   filter: GlobalFilterState;
   onApplyFilter: (newFilter: GlobalFilterState) => void;
+  materials?: Material[];
   className?: string;
 }
 
 export const GlobalFilterBar: React.FC<GlobalFilterBarProps> = ({
   filter,
   onApplyFilter,
+  materials = [],
   className = '',
 }) => {
   const { t, language } = useLanguage();
@@ -31,6 +36,34 @@ export const GlobalFilterBar: React.FC<GlobalFilterBarProps> = ({
 
   // Draft state before user clicks "Apply Filter"
   const [draft, setDraft] = useState<GlobalFilterState>(filter);
+
+  // Synchronize draft when filter prop changes
+  useEffect(() => {
+    setDraft(filter);
+  }, [filter]);
+
+  // Plants & Stores Options (Canonical & Cascaded)
+  const availablePlants = useMemo(() => {
+    return getAllPlants(materials);
+  }, [materials]);
+
+  const availableStores = useMemo(() => {
+    return getStoresForPlant(draft.selectedPlant, materials);
+  }, [draft.selectedPlant, materials]);
+
+  const handlePlantChange = (newPlant: string) => {
+    const validStores = getStoresForPlant(newPlant, materials);
+    const isStoreStillValid =
+      draft.selectedStore === 'All Stores' ||
+      draft.selectedStore === 'ALL' ||
+      validStores.some(s => s.code === draft.selectedStore);
+
+    setDraft(prev => ({
+      ...prev,
+      selectedPlant: newPlant,
+      selectedStore: isStoreStillValid ? prev.selectedStore : 'All Stores',
+    }));
+  };
 
   // Hour options
   const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
@@ -65,15 +98,16 @@ export const GlobalFilterBar: React.FC<GlobalFilterBarProps> = ({
   return (
     <div className={`p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3.5 ${className}`}>
       <form onSubmit={handleApply} className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3.5">
-        {/* LEFT: VIEW MODE TOGGLE & PLANT SELECTOR */}
+        {/* LEFT: VIEW MODE TOGGLE & PLANT / STORE SELECTORS */}
         <div className="flex flex-wrap items-center gap-3">
           {/* View Mode Toggle: Overview / Price */}
           <div className="flex items-center p-1 bg-app-bg dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder rounded-xl">
             <button
               type="button"
               onClick={() => {
-                setDraft(prev => ({ ...prev, viewMode: 'OVERVIEW' }));
-                onApplyFilter({ ...draft, viewMode: 'OVERVIEW' });
+                const next = { ...draft, viewMode: 'OVERVIEW' as ReportViewMode };
+                setDraft(next);
+                onApplyFilter(next);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 draft.viewMode === 'OVERVIEW'
@@ -88,8 +122,9 @@ export const GlobalFilterBar: React.FC<GlobalFilterBarProps> = ({
             <button
               type="button"
               onClick={() => {
-                setDraft(prev => ({ ...prev, viewMode: 'PRICE' }));
-                onApplyFilter({ ...draft, viewMode: 'PRICE' });
+                const next = { ...draft, viewMode: 'PRICE' as ReportViewMode };
+                setDraft(next);
+                onApplyFilter(next);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 draft.viewMode === 'PRICE'
@@ -107,13 +142,28 @@ export const GlobalFilterBar: React.FC<GlobalFilterBarProps> = ({
             <Building2 className="w-3.5 h-3.5 text-app-muted absolute left-3 pointer-events-none" />
             <select
               value={draft.selectedPlant}
-              onChange={(e) => setDraft(prev => ({ ...prev, selectedPlant: e.target.value }))}
+              onChange={(e) => handlePlantChange(e.target.value)}
               className="h-9 pl-8 pr-8 bg-white dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder rounded-xl text-xs font-semibold text-app-text dark:text-app-darkText outline-none focus:border-brand-blue shadow-subtle cursor-pointer"
             >
-              <option value="All Plants">{t('all_plants')}</option>
-              <option value="DEMO">DEMO</option>
-              <option value="PLANT-01">PLANT-01</option>
-              <option value="PLANT-02">PLANT-02</option>
+              <option value="All Plants">{t('all_plants') || 'All Plants'}</option>
+              {availablePlants.map(p => (
+                <option key={p.code} value={p.code}>{p.code}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Store / SLoc Selector */}
+          <div className="relative inline-flex items-center">
+            <Warehouse className="w-3.5 h-3.5 text-app-muted absolute left-3 pointer-events-none" />
+            <select
+              value={draft.selectedStore || 'All Stores'}
+              onChange={(e) => setDraft(prev => ({ ...prev, selectedStore: e.target.value }))}
+              className="h-9 pl-8 pr-8 bg-white dark:bg-app-darkBg border border-app-border dark:border-app-darkBorder rounded-xl text-xs font-semibold text-app-text dark:text-app-darkText outline-none focus:border-brand-blue shadow-subtle cursor-pointer"
+            >
+              <option value="All Stores">{t('all_stores') || (isTh ? 'ทุกสโตร์' : 'All Stores')}</option>
+              {availableStores.map(s => (
+                <option key={s.code} value={s.code}>{s.label || s.code}</option>
+              ))}
             </select>
           </div>
         </div>

@@ -11,9 +11,9 @@ import { useStock } from '../../context/StockContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useToast } from '../../context/ToastContext';
+import { useCascadingFilters } from '../../hooks/useCascadingFilters';
 import { exportMasterDataToCsv } from '../../utils/export';
 import { formatDateTime } from '../../utils/dateRange';
-import { getCurrentStock } from '../../utils/stockCalculation';
 import {
   Plus,
   Download,
@@ -22,6 +22,9 @@ import {
   Package,
   Building2,
   SlidersHorizontal,
+  Store,
+  Layers,
+  RotateCcw,
 } from 'lucide-react';
 
 const MASTER_COLUMNS_DEF: ColumnDefinition[] = [
@@ -40,13 +43,28 @@ const MASTER_COLUMNS_DEF: ColumnDefinition[] = [
 ];
 
 export const MasterDataPage: React.FC = () => {
-  const { materials, transactions } = useStock();
+  const { materials } = useStock();
   const { hasPermission } = useAuth();
   const { t } = useLanguage();
   const { addToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPlant, setSelectedPlant] = useState('All Plants');
+  const [selectedMatType, setSelectedMatType] = useState<string>('ALL');
+
+  // Cascading Filters (Plant -> Store (SLoc))
+  const {
+    selectedPlant,
+    setSelectedPlant,
+    selectedStore,
+    setSelectedStore,
+    plantOptions,
+    storeOptions,
+    resetAllFilters,
+  } = useCascadingFilters({
+    materials,
+    initialPlant: 'All Plants',
+  });
+
   const [visibleColIds, setVisibleColIds] = useState<string[]>(() => {
     return [
       'plant',
@@ -91,20 +109,44 @@ export const MasterDataPage: React.FC = () => {
     setCurrentPage(1);
   };
 
-  // Filter materials in real-time
+  // Material Type Options dynamically derived from matching materials
+  const matTypeOptions = useMemo(() => {
+    const types = new Set<string>();
+    materials.forEach(m => {
+      if (m.materialType) types.add(m.materialType);
+    });
+    return [
+      { value: 'ALL', label: 'All Types' },
+      ...Array.from(types).sort().map(t => ({ value: t, label: t })),
+    ];
+  }, [materials]);
+
+  // Filter materials in real-time with Cascading Plant -> Store (SLoc) + Type + Search
   const filteredMaterials = useMemo(() => {
     return materials.filter(m => {
-      // Plant filter
-      if (selectedPlant !== 'All Plants' && m.plant !== selectedPlant) {
+      // 1. Plant filter
+      if (selectedPlant !== 'ALL' && selectedPlant !== 'All Plants' && m.plant !== selectedPlant) {
         return false;
       }
 
-      // Search query across Code, Description, Type, SLoc, Bin
+      // 2. Store / SLoc filter
+      if (selectedStore !== 'ALL' && (m.storageLocation || 'MAIN') !== selectedStore) {
+        return false;
+      }
+
+      // 3. Material Type filter
+      if (selectedMatType !== 'ALL' && m.materialType !== selectedMatType) {
+        return false;
+      }
+
+      // 4. Search query across Code, Description, Item Name, Item Code, Type, SLoc, Bin
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matches =
           m.materialCode.toLowerCase().includes(query) ||
           m.description.toLowerCase().includes(query) ||
+          (m.itemName && m.itemName.toLowerCase().includes(query)) ||
+          (m.itemCode && m.itemCode.toLowerCase().includes(query)) ||
           m.materialType.toLowerCase().includes(query) ||
           m.storageLocation?.toLowerCase().includes(query) ||
           m.storageBin?.toLowerCase().includes(query);
@@ -113,7 +155,7 @@ export const MasterDataPage: React.FC = () => {
 
       return true;
     });
-  }, [materials, selectedPlant, searchQuery]);
+  }, [materials, selectedPlant, selectedStore, selectedMatType, searchQuery]);
 
   // Handle column sorting (cycle: asc -> desc -> reset)
   const handleSortChange = (colId: string) => {
@@ -139,10 +181,7 @@ export const MasterDataPage: React.FC = () => {
       let valA: any = (a as any)[sortColumn];
       let valB: any = (b as any)[sortColumn];
 
-      if (sortColumn === 'quantity') {
-        valA = getCurrentStock(a.id, transactions);
-        valB = getCurrentStock(b.id, transactions);
-      } else if (sortColumn === 'materialDetails') {
+      if (sortColumn === 'materialDetails') {
         valA = a.description.toLowerCase();
         valB = b.description.toLowerCase();
       } else if (typeof valA === 'string') {
@@ -154,7 +193,7 @@ export const MasterDataPage: React.FC = () => {
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filteredMaterials, sortColumn, sortDirection, transactions]);
+  }, [filteredMaterials, sortColumn, sortDirection]);
 
   // Paginated slice
   const paginatedMaterials = useMemo(() => {
@@ -188,7 +227,7 @@ export const MasterDataPage: React.FC = () => {
   };
 
   const handleExport = () => {
-    exportMasterDataToCsv(sortedMaterials, transactions);
+    exportMasterDataToCsv(sortedMaterials);
     addToast('Master Data exported successfully', 'success');
   };
 
@@ -418,7 +457,7 @@ export const MasterDataPage: React.FC = () => {
     });
 
     return cols;
-  }, [visibleColIds, t, canEdit, transactions]);
+  }, [visibleColIds, t, canEdit]);
 
   return (
     <PageLayout
@@ -449,32 +488,71 @@ export const MasterDataPage: React.FC = () => {
       }
     >
       <div className="space-y-4">
-        {/* Toolbar: Real-time Search, Plant Filter, Columns Toggle (NO Stock Status filter!) */}
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto flex-1 max-w-2xl">
+        {/* Toolbar: Real-time Search, Cascading Filters (Plant -> Store (SLoc) + Type), Columns Toggle */}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1">
             <SearchInput
               value={searchQuery}
               onChange={handleSearchChange}
               placeholder={t('search_material_placeholder')}
-              className="w-full sm:w-80"
+              className="w-full sm:w-64"
             />
 
+            {/* 1. Plant Filter */}
             <FilterSelect
               label={t('plant_filter')}
               value={selectedPlant}
               onChange={handlePlantChange}
-              prefixIcon={<Building2 className="w-3.5 h-3.5" />}
-              options={[
-                { value: 'All Plants', label: t('all_plants') },
-                { value: 'DEMO', label: 'DEMO' },
-                { value: 'PLANT-01', label: 'PLANT-01' },
-                { value: 'PLANT-02', label: 'PLANT-02' },
-              ]}
+              prefixIcon={<Building2 className="w-3.5 h-3.5 text-brand-blue" />}
+              options={plantOptions}
               className="w-full sm:w-44"
             />
+
+            {/* 2. Store (SLoc) Filter (Cascaded) */}
+            <FilterSelect
+              label="Store (SLoc)"
+              value={selectedStore}
+              onChange={(val) => {
+                setSelectedStore(val);
+                setCurrentPage(1);
+              }}
+              prefixIcon={<Store className="w-3.5 h-3.5 text-purple-600" />}
+              options={storeOptions}
+              className="w-full sm:w-44"
+            />
+
+            {/* 3. Material Type Filter */}
+            <FilterSelect
+              label="Type"
+              value={selectedMatType}
+              onChange={(val) => {
+                setSelectedMatType(val);
+                setCurrentPage(1);
+              }}
+              prefixIcon={<Layers className="w-3.5 h-3.5 text-emerald-600" />}
+              options={matTypeOptions}
+              className="w-full sm:w-40"
+            />
+
+            {/* Reset Filters Button */}
+            {((selectedPlant !== 'ALL' && selectedPlant !== 'All Plants') || selectedStore !== 'ALL' || selectedMatType !== 'ALL') && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetAllFilters();
+                  setSelectedMatType('ALL');
+                  setCurrentPage(1);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-app-border dark:border-app-darkBorder text-xs text-app-muted hover:text-brand-blue hover:border-brand-blue/40 transition-colors"
+                title="Clear Filters"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear Filters</span>
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-center">
+          <div className="flex items-center gap-2 self-end lg:self-center shrink-0">
             <VisibleColumnsDropdown
               columns={MASTER_COLUMNS_DEF}
               visibleColumns={visibleColIds}

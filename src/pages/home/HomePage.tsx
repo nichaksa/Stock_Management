@@ -5,16 +5,11 @@ import {
   Layers,
   ArrowLeftRight,
   FileSpreadsheet,
-  Cpu,
   FileCheck2,
-  AlertOctagon,
-  Radio,
-  Activity,
   ArrowUpRight,
-  Shield,
-  Clock,
   Sparkles,
   Boxes,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useStock } from '../../context/StockContext';
@@ -71,13 +66,13 @@ export const HomePage: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-app-secondary dark:text-app-darkSecondary">
-                  Material master catalog, physical stock ledger, Goods Movement (GR/GI), and analytics.
+                  Material master catalog, physical stock ledger, Goods Movement (GR/GI), Requisitions, and Analytics.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-2">
             <Link
               to="/stock/master-data"
               className="p-3 rounded-xl border border-app-border dark:border-app-darkBorder bg-app-bg/50 dark:bg-app-darkBg/50 hover:bg-brand-softBlue dark:hover:bg-blue-950/40 hover:border-brand-blue/40 transition-all group"
@@ -89,8 +84,38 @@ export const HomePage: React.FC = () => {
               <span className="font-bold text-xs text-app-text dark:text-app-darkText group-hover:text-brand-blue block">
                 {t('master_data')}
               </span>
-              <span className="text-[11px] text-app-muted">Catalog & Specifications</span>
+              <span className="text-[11px] text-app-muted">Catalog & Specs</span>
             </Link>
+
+            <Link
+              to="/stock/request"
+              className="p-3 rounded-xl border border-app-border dark:border-app-darkBorder bg-app-bg/50 dark:bg-app-darkBg/50 hover:bg-brand-softBlue dark:hover:bg-blue-950/40 hover:border-brand-blue/40 transition-all group"
+            >
+              <div className="flex items-center justify-between text-app-secondary dark:text-app-darkSecondary group-hover:text-brand-blue mb-1">
+                <ClipboardList className="w-4 h-4" />
+                <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <span className="font-bold text-xs text-app-text dark:text-app-darkText group-hover:text-brand-blue block">
+                {t('material_request') || 'Material Request'}
+              </span>
+              <span className="text-[11px] text-app-muted">Create Requisition</span>
+            </Link>
+
+            {hasPermission('STORE_APPROVAL') && (
+              <Link
+                to="/stock/approval"
+                className="p-3 rounded-xl border border-brand-blue/30 dark:border-blue-900 bg-brand-softBlue/20 dark:bg-blue-950/20 hover:bg-brand-softBlue dark:hover:bg-blue-950/40 hover:border-brand-blue transition-all group"
+              >
+                <div className="flex items-center justify-between text-brand-blue mb-1">
+                  <FileCheck2 className="w-4 h-4" />
+                  <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <span className="font-bold text-xs text-brand-blue block">
+                  {t('store_approval') || 'Store Approval'}
+                </span>
+                <span className="text-[11px] text-brand-blue/80 font-medium">Review & Issue</span>
+              </Link>
+            )}
 
             <Link
               to="/stock/balance"
@@ -103,7 +128,7 @@ export const HomePage: React.FC = () => {
               <span className="font-bold text-xs text-app-text dark:text-app-darkText group-hover:text-brand-blue block">
                 {t('stock_balance')}
               </span>
-              <span className="text-[11px] text-app-muted">Quantity & GR/GI Actions</span>
+              <span className="text-[11px] text-app-muted">Material & Lot View</span>
             </Link>
 
             <Link
@@ -117,7 +142,7 @@ export const HomePage: React.FC = () => {
               <span className="font-bold text-xs text-app-text dark:text-app-darkText group-hover:text-brand-blue block">
                 {t('transaction')}
               </span>
-              <span className="text-[11px] text-app-muted">System-wide Audit Trail</span>
+              <span className="text-[11px] text-app-muted">Audit & Transfers</span>
             </Link>
 
             <Link
@@ -133,117 +158,6 @@ export const HomePage: React.FC = () => {
               </span>
               <span className="text-[11px] text-app-muted">Valuation & Reorders</span>
             </Link>
-          </div>
-        </div>
-
-        {/* ENTERPRISE MODULES GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* M-PROS */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400">
-                  <Cpu className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                    M-Pros (Maintenance Management)
-                  </h4>
-                  <p className="text-[11px] text-app-muted">Work orders, PM schedules, and asset health</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {["Dashboard", "Create Job", "Follow Up", "My Job", "PM Master", "SparePart"].map((action, i) => (
-                <span
-                  key={i}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
-                >
-                  {action}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* WORK PERMIT */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
-                  <FileCheck2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                    Work Permit (EHS Safety)
-                  </h4>
-                  <p className="text-[11px] text-app-muted">Hot work, confined space, and safety authorization</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {["Dashboard", "WorkPermit"].map((action, i) => (
-                <span
-                  key={i}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
-                >
-                  {action}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* UNSAFE */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/40 text-gi">
-                  <AlertOctagon className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                    Unsafe Condition & Incident Reporting
-                  </h4>
-                  <p className="text-[11px] text-app-muted">Hazard reporting and corrective actions</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {["Dashboard", "Unsafe"].map((action, i) => (
-                <span
-                  key={i}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
-                >
-                  {action}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Z-SENSOR & Z-PAP */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder shadow-subtle space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400">
-                  <Activity className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-app-text dark:text-app-darkText uppercase tracking-wider">
-                    Z-Sensor & Z-PAP (IoT & Predictive AI)
-                  </h4>
-                  <p className="text-[11px] text-app-muted">Telemetry streaming, telemetry alarms, AI predictive models</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {["Z-SENSOR", "Data Preparation", "Model Deployment", "Alarm History"].map((action, i) => (
-                <span
-                  key={i}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-app-bg dark:bg-app-darkBg text-app-secondary dark:text-app-darkSecondary border border-app-border dark:border-app-darkBorder cursor-default select-none opacity-80"
-                >
-                  {action}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
       </div>

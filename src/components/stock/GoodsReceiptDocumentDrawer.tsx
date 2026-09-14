@@ -5,6 +5,7 @@ import { useStock } from '../../context/StockContext';
 import { useToast } from '../../context/ToastContext';
 import { ItemFinderModal } from './ItemFinderModal';
 import { getCurrentStock, checkDuplicatePrId } from '../../utils/stockCalculation';
+import { getAllPlants, getStoresForPlant } from '../../utils/plantStoreMaster';
 import {
   PackagePlus,
   Plus,
@@ -43,8 +44,11 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
   const { materials, transactions, transactionDocuments, createDocumentGoodsReceipt } = useStock();
   const { addToast } = useToast();
 
+  const plantOptions = React.useMemo(() => getAllPlants(materials), [materials]);
+
   // Document Header State
   const [plant, setPlant] = useState<string>('DEMO');
+  const storeOptions = React.useMemo(() => getStoresForPlant(plant, materials), [plant, materials]);
   const [prId, setPrId] = useState<string>('');
   const [prIdError, setPrIdError] = useState<string>('');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
@@ -65,7 +69,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
   const [itemType, setItemType] = useState<string>('คืนของ');
   const [itemLot, setItemLot] = useState<string>('');
   const [itemBatch, setItemBatch] = useState<string>('');
-  const [itemSerial, setItemSerial] = useState<string>('');
   const [itemSupplier, setItemSupplier] = useState<string>('');
   const [itemLocation, setItemLocation] = useState<string>('MAIN');
   const [itemBin, setItemBin] = useState<string>('');
@@ -84,7 +87,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     setItemBatch(`B${dateStr}`);
     setItemLot('');
-    setItemSerial('');
     setItemQty(1);
     setItemSupplier('');
     setItemComment('');
@@ -109,7 +111,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
             description: preSelectedMaterial.description,
             lot: `L${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`,
             batchNumber: `B${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`,
-            serialNumber: '',
             quantity: 1,
             price: preSelectedMaterial.standardPrice || 0,
             type: 'คืนของ',
@@ -161,7 +162,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
       description: selectedMaterial.description,
       lot: itemLot.trim() || undefined,
       batchNumber: itemBatch.trim() || undefined,
-      serialNumber: itemSerial.trim() || undefined,
       quantity: numQty,
       price: numPrice,
       type: itemType, // Selected GR Type: คืนของ | Adjust Stock | รับ SP นอกระบบ | รับ SP จาก Project
@@ -178,7 +178,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
 
     // Reset draft input for next item
     setItemQty(1);
-    setItemSerial('');
     setItemComment('');
     addToast(`Added ${selectedMaterial.materialCode} (${itemType}) to Material Lines`, 'info');
   };
@@ -342,12 +341,21 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
                 </label>
                 <select
                   value={plant}
-                  onChange={(e) => setPlant(e.target.value)}
+                  onChange={(e) => {
+                    const newPlant = e.target.value;
+                    setPlant(newPlant);
+                    const validStores = getStoresForPlant(newPlant, materials).map(s => s.code);
+                    if (!validStores.includes(itemLocation)) {
+                      setItemLocation(validStores[0] || 'MAIN');
+                    }
+                  }}
                   className="w-full h-9 px-3 rounded-xl border border-app-border dark:border-app-darkBorder bg-app-bg dark:bg-app-darkBg text-xs font-semibold text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
                 >
-                  <option value="DEMO">DEMO</option>
-                  <option value="PLANT-01">PLANT-01</option>
-                  <option value="PLANT-02">PLANT-02</option>
+                  {plantOptions.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.label || p.name || p.code}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -538,13 +546,17 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
                 <label className="block font-semibold text-app-text dark:text-app-darkText mb-1">
                   SLoc (Storage Location)
                 </label>
-                <input
-                  type="text"
+                <select
                   value={itemLocation}
-                  onChange={(e) => setItemLocation(e.target.value.toUpperCase())}
-                  placeholder="e.g. STORE01"
+                  onChange={(e) => setItemLocation(e.target.value)}
                   className="w-full h-9 px-3 rounded-xl border border-app-border dark:border-app-darkBorder bg-white dark:bg-app-darkBg text-xs font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
-                />
+                >
+                  {storeOptions.map((s) => (
+                    <option key={s.code} value={s.code}>
+                      {s.label || s.name || s.code}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Storage Bin */}
@@ -590,8 +602,8 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
               </div>
             </div>
 
-            {/* ROW 4: Lot, Batch No., S/N */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            {/* ROW 4: Lot & Batch */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block font-semibold text-app-text dark:text-app-darkText mb-1">
                   Lot
@@ -614,19 +626,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
                   value={itemBatch}
                   onChange={(e) => setItemBatch(e.target.value.toUpperCase())}
                   placeholder="e.g. B260908"
-                  className="w-full h-9 px-3 rounded-xl border border-app-border dark:border-app-darkBorder bg-white dark:bg-app-darkBg text-xs font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-app-text dark:text-app-darkText mb-1">
-                  Serial Number (S/N)
-                </label>
-                <input
-                  type="text"
-                  value={itemSerial}
-                  onChange={(e) => setItemSerial(e.target.value)}
-                  placeholder="Optional S/N"
                   className="w-full h-9 px-3 rounded-xl border border-app-border dark:border-app-darkBorder bg-white dark:bg-app-darkBg text-xs font-mono text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
                 />
               </div>
@@ -669,7 +668,6 @@ export const GoodsReceiptDocumentDrawer: React.FC<GoodsReceiptDocumentDrawerProp
                   setItemQty(1);
                   setItemType('คืนของ');
                   setItemLot('');
-                  setItemSerial('');
                   setItemSupplier('');
                   setItemComment('');
                 }}

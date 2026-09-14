@@ -21,7 +21,7 @@ function escapeCsvCell(cell: any): string {
   return `"${str}"`;
 }
 
-export function exportMasterDataToCsv(materials: Material[], _transactions: StockTransaction[], filename = "zycoda_master_data.csv") {
+export function exportMasterDataToCsv(materials: Material[], filename = "zycoda_master_data.csv") {
   const headers = [
     "Plant",
     "Material Code",
@@ -78,7 +78,6 @@ export function exportTransactionsToCsv(transactions: StockTransaction[], filena
     "Storage Location",
     "Storage Bin",
     "Batch No",
-    "Serial No",
     "Lot No",
     "Process",
     "Reference No",
@@ -98,7 +97,6 @@ export function exportTransactionsToCsv(transactions: StockTransaction[], filena
     tx.storageLocation || "-",
     tx.storageBin || "-",
     tx.batchNo || "-",
-    tx.serialNo || "-",
     tx.lotNo || "-",
     tx.process || "-",
     tx.referenceNo || "-",
@@ -113,7 +111,27 @@ export function exportTransactionsToCsv(transactions: StockTransaction[], filena
   downloadCsvFile(csv, filename);
 }
 
-export function exportInventoryReportToCsv(materials: Material[], transactions: StockTransaction[], filename = "zycoda_inventory_report.csv") {
+export function exportInventoryReportToCsv(
+  materials: Material[],
+  transactions: StockTransaction[],
+  plantFilter?: string,
+  storeFilter?: string,
+  filename = "zycoda_inventory_report.csv"
+) {
+  const isPlantFilter = plantFilter && plantFilter !== 'ALL' && plantFilter !== 'All Plants';
+  const isStoreFilter = storeFilter && storeFilter !== 'ALL' && storeFilter !== 'All Stores';
+
+  let filteredMaterials = materials;
+  if (isPlantFilter) {
+    filteredMaterials = filteredMaterials.filter(m => m.plant === plantFilter);
+  }
+  if (isStoreFilter) {
+    filteredMaterials = filteredMaterials.filter(m => {
+      const currentQty = getCurrentStock(m.id, transactions, plantFilter, storeFilter);
+      return currentQty > 0 || (m.storageLocation || 'MAIN') === storeFilter;
+    });
+  }
+
   const headers = [
     "Plant",
     "Material Code",
@@ -134,8 +152,8 @@ export function exportInventoryReportToCsv(materials: Material[], transactions: 
     "Last Movement Type"
   ];
 
-  const rows = materials.map(m => {
-    const currentQty = getCurrentStock(m.id, transactions);
+  const rows = filteredMaterials.map(m => {
+    const currentQty = getCurrentStock(m.id, transactions, isPlantFilter ? plantFilter : undefined, isStoreFilter ? storeFilter : undefined);
     const status = calculateStockStatus(m, currentQty);
     const lastMove = getLastMovement(m.id, transactions);
     const totalVal = currentQty * (m.standardPrice || 0);

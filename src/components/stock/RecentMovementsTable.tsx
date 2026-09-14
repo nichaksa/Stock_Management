@@ -60,8 +60,6 @@ export const RecentMovementsTable: React.FC<RecentMovementsTableProps> = ({
         (tx.batchNumber && tx.batchNumber.toLowerCase().includes(q)) ||
         (tx.lotNo && tx.lotNo.toLowerCase().includes(q)) ||
         (tx.lot && tx.lot.toLowerCase().includes(q)) ||
-        (tx.serialNo && tx.serialNo.toLowerCase().includes(q)) ||
-        (tx.serialNumber && tx.serialNumber.toLowerCase().includes(q)) ||
         (tx.referenceNo && tx.referenceNo.toLowerCase().includes(q)) ||
         (tx.referenceNumber && tx.referenceNumber.toLowerCase().includes(q)) ||
         (tx.picklist && tx.picklist.toLowerCase().includes(q)) ||

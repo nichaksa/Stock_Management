@@ -1,15 +1,52 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Material, StockTransaction, TransactionDocument, TransactionItem } from '../types/stock';
+import {
+  Material,
+  StockTransaction,
+  TransactionDocument,
+  TransactionItem,
+  MaterialRequest,
+  MaterialRequestItem,
+  MaterialRequestStatus,
+  MaterialTransfer,
+  StockLotItem,
+} from '../types/stock';
 import { INITIAL_MATERIALS } from '../mock/materials';
 import { INITIAL_TRANSACTIONS } from '../mock/transactions';
 import { INITIAL_TRANSACTION_DOCUMENTS } from '../mock/transactionDocuments';
+import { INITIAL_MATERIAL_REQUESTS } from '../mock/materialRequests';
+import { INITIAL_TRANSFERS } from '../mock/materialTransfers';
 import { useAuth } from './AuthContext';
-import { getCurrentStock, calculateStockStatus, getLastMovement, checkDuplicatePrId, checkDuplicatePicklist } from '../utils/stockCalculation';
+import {
+  getCurrentStock,
+  calculateStockStatus,
+  getLastMovement,
+  checkDuplicatePrId,
+  checkDuplicatePicklist,
+  calculateLotBalances,
+} from '../utils/stockCalculation';
+
+export interface ItemIssueLotAllocation {
+  lot: string;
+  batchNumber?: string;
+  storageLocation?: string;
+  storageBin?: string;
+  quantity: number;
+}
+
+export interface ItemIssueSpec {
+  itemId: string;
+  issueQuantity: number;
+  materialId?: string;
+  lotAllocations?: ItemIssueLotAllocation[];
+}
 
 interface StockContextType {
   materials: Material[];
   transactions: StockTransaction[];
   transactionDocuments: TransactionDocument[];
+  materialRequests: MaterialRequest[];
+  materialTransfers: MaterialTransfer[];
+  getLotBalances: (plant?: string, store?: string) => StockLotItem[];
   addMaterial: (material: Omit<Material, 'id' | 'qrValue' | 'createdAt' | 'updatedAt'>, openingQty: number) => { success: boolean; error?: string; material?: Material };
   updateMaterial: (id: string, updates: Partial<Omit<Material, 'id' | 'materialCode' | 'qrValue' | 'createdAt'>>) => { success: boolean; error?: string };
   deleteMaterial: (id: string) => { success: boolean; error?: string };
@@ -18,8 +55,9 @@ interface StockContextType {
     quantity: number;
     pricePerUnit?: number;
     batchNo?: string;
-    serialNo?: string;
     lotNo?: string;
+    expiryDate?: string;
+    receivedDate?: string;
     type?: string;
     supplier?: string;
     storageLocation?: string;
@@ -33,7 +71,6 @@ interface StockContextType {
     quantity: number;
     pricePerUnit?: number;
     batchNo?: string;
-    serialNo?: string;
     lotNo?: string;
     type?: string;
     supplier?: string;
@@ -44,6 +81,22 @@ interface StockContextType {
     referenceNo?: string;
     comment?: string;
   }) => { success: boolean; error?: string; transaction?: StockTransaction; document?: TransactionDocument };
+  createDocumentGoodsReceipt: (data: {
+    transactionNumber?: string;
+    plant: string;
+    referenceNumber?: string;
+    prId?: string;
+    comment?: string;
+    items: Omit<TransactionItem, 'id'>[];
+  }) => { success: boolean; error?: string; document?: TransactionDocument };
+  createDocumentGoodsIssue: (data: {
+    transactionNumber?: string;
+    plant: string;
+    referenceNumber?: string;
+    picklist?: string;
+    comment?: string;
+    items: Omit<TransactionItem, 'id'>[];
+  }) => { success: boolean; error?: string; document?: TransactionDocument };
   createStockAdjustment: (data: {
     materialId: string;
     adjustmentType: 'INCREASE' | 'DECREASE' | 'SET_ACTUAL';
@@ -51,20 +104,31 @@ interface StockContextType {
     reason: string;
     comment?: string;
   }) => { success: boolean; error?: string; transaction?: StockTransaction };
-  createDocumentGoodsReceipt: (docData: {
-    plant: string;
-    referenceNumber?: string;
-    prId?: string;
+  createMaterialRequest: (data: Omit<MaterialRequest, 'id' | 'requestNo' | 'status' | 'createdAt' | 'updatedAt' | 'timeline'>) => { success: boolean; error?: string; request?: MaterialRequest };
+  approveMaterialRequest: (id: string, comments?: string) => { success: boolean; error?: string };
+  storeReviewPass: (id: string, comments?: string) => { success: boolean; error?: string };
+  rejectMaterialRequest: (id: string, reason: string) => { success: boolean; error?: string };
+  proceedPurchaseRequisition: (id: string, storeNotes?: string) => { success: boolean; error?: string };
+  convertPrToMaterialRequest: (id: string, notes?: string) => { success: boolean; error?: string };
+  issueMaterialRequest: (
+    id: string,
+    itemIssues?: ItemIssueSpec[],
+    notes?: string
+  ) => { success: boolean; error?: string; document?: TransactionDocument };
+  closeMaterialRequest: (id: string) => { success: boolean; error?: string };
+  transferMaterial: (data: {
+    plant?: string;
+    fromPlant?: string;
+    fromStore: string;
+    toPlant?: string;
+    toStore: string;
+    materialId: string;
+    quantity: number;
+    lot?: string;
+    batchNumber?: string;
+    reason?: string;
     comment?: string;
-    items: Omit<TransactionItem, 'id'>[];
-  }) => { success: boolean; error?: string; document?: TransactionDocument };
-  createDocumentGoodsIssue: (docData: {
-    plant: string;
-    referenceNumber?: string;
-    picklist?: string;
-    comment?: string;
-    items: Omit<TransactionItem, 'id'>[];
-  }) => { success: boolean; error?: string; document?: TransactionDocument };
+  }) => { success: boolean; error?: string; transfer?: MaterialTransfer };
   getItemStock: (materialId: string) => number;
   getItemStatus: (materialId: string) => string;
   getItemLastMove: (materialId: string) => StockTransaction | undefined;
@@ -76,6 +140,86 @@ const StockContext = createContext<StockContextType | undefined>(undefined);
 const MATERIALS_STORAGE_KEY = 'zycoda_materials_v1';
 const TRANSACTIONS_STORAGE_KEY = 'zycoda_transactions_v1';
 const DOCUMENTS_STORAGE_KEY = 'zycoda_documents_v1';
+const REQUESTS_STORAGE_KEY = 'zycoda_requests_v1';
+const TRANSFERS_STORAGE_KEY = 'zycoda_transfers_v1';
+
+export const generateNextMrNumber = (requests: MaterialRequest[] = []): string => {
+  let maxNum = 0;
+  const now = new Date();
+  const year = String(now.getFullYear()).slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `MR-${year}${month}-`;
+
+  requests.forEach(req => {
+    if (req.requestNo && req.requestNo.startsWith(prefix)) {
+      const parsed = parseInt(req.requestNo.replace(prefix, ''), 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    } else if (req.requestNo) {
+      const match = req.requestNo.match(/MR-\d{4}-(\d+)/i);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
+      }
+    }
+  });
+
+  const nextNum = maxNum + 1;
+  return `${prefix}${String(nextNum).padStart(3, '0')}`;
+};
+
+export const generateNextPrNumber = (requests: MaterialRequest[] = []): string => {
+  let maxNum = 0;
+  const now = new Date();
+  const year = String(now.getFullYear()).slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `PR-${year}${month}-`;
+
+  requests.forEach(req => {
+    if (req.requestNo && req.requestNo.startsWith(prefix)) {
+      const parsed = parseInt(req.requestNo.replace(prefix, ''), 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    } else if (req.requestNo) {
+      const match = req.requestNo.match(/PR-\d{4}-(\d+)/i);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
+      }
+    }
+  });
+
+  const nextNum = maxNum + 1;
+  return `${prefix}${String(nextNum).padStart(3, '0')}`;
+};
+
+export const generateNextTransferNumber = (transfers: MaterialTransfer[] = []): string => {
+  let maxNum = 0;
+  const now = new Date();
+  const year = String(now.getFullYear()).slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `TR-${year}${month}-`;
+
+  transfers.forEach(tr => {
+    if (tr.transferNumber && tr.transferNumber.startsWith(prefix)) {
+      const parsed = parseInt(tr.transferNumber.replace(prefix, ''), 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    } else if (tr.transferNumber) {
+      const match = tr.transferNumber.match(/TR-\d{4}-(\d+)/i);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
+      }
+    }
+  });
+
+  const nextNum = maxNum + 1;
+  return `${prefix}${String(nextNum).padStart(3, '0')}`;
+};
 
 // Legacy date-format GR & GI number mapping for clean backward compatibility
 const LEGACY_GR_MAP: Record<string, string> = {
@@ -196,6 +340,30 @@ const normalizeDocuments = (list: TransactionDocument[]): TransactionDocument[] 
   });
 };
 
+function normalizeMaterialRequests(list: MaterialRequest[]): MaterialRequest[] {
+  if (!Array.isArray(list) || list.length === 0) return INITIAL_MATERIAL_REQUESTS;
+  return list.map(req => {
+    let reqType = req.requestType;
+    if (!reqType) {
+      reqType = req.requestNo?.toUpperCase().startsWith('PR-') ? 'PURCHASE_REQUISITION' : 'MATERIAL_REQUEST';
+    }
+    const normalizedItems = (req.items || []).map(it => ({
+      ...it,
+      issuedQuantity:
+        it.issuedQuantity !== undefined
+          ? it.issuedQuantity
+          : req.status === 'ISSUED'
+          ? it.requestedQuantity
+          : 0,
+    }));
+    return {
+      ...req,
+      requestType: reqType,
+      items: normalizedItems,
+    };
+  });
+}
+
 export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, resetAuthData } = useAuth();
 
@@ -226,6 +394,24 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
+  const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>(() => {
+    try {
+      const saved = localStorage.getItem(REQUESTS_STORAGE_KEY);
+      return saved ? normalizeMaterialRequests(JSON.parse(saved)) : INITIAL_MATERIAL_REQUESTS;
+    } catch {
+      return INITIAL_MATERIAL_REQUESTS;
+    }
+  });
+
+  const [materialTransfers, setMaterialTransfers] = useState<MaterialTransfer[]>(() => {
+    try {
+      const saved = localStorage.getItem(TRANSFERS_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : INITIAL_TRANSFERS;
+    } catch {
+      return INITIAL_TRANSFERS;
+    }
+  });
+
   // Sync to localStorage
   useEffect(() => {
     localStorage.setItem(MATERIALS_STORAGE_KEY, JSON.stringify(materials));
@@ -238,6 +424,21 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem(DOCUMENTS_STORAGE_KEY, JSON.stringify(transactionDocuments));
   }, [transactionDocuments]);
+
+  useEffect(() => {
+    localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(materialRequests));
+  }, [materialRequests]);
+
+  useEffect(() => {
+    localStorage.setItem(TRANSFERS_STORAGE_KEY, JSON.stringify(materialTransfers));
+  }, [materialTransfers]);
+
+  const getLotBalances = useCallback(
+    (plant?: string, store?: string): StockLotItem[] => {
+      return calculateLotBalances(materials, transactions, plant, store);
+    },
+    [materials, transactions]
+  );
 
   const getItemStock = useCallback((materialId: string): number => {
     return getCurrentStock(materialId, transactions);
@@ -339,8 +540,9 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     quantity: number;
     pricePerUnit?: number;
     batchNo?: string;
-    serialNo?: string;
     lotNo?: string;
+    expiryDate?: string;
+    receivedDate?: string;
     type?: string;
     supplier?: string;
     storageLocation?: string;
@@ -382,10 +584,10 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       storageBin: data.storageBin || mat.storageBin,
       batchNo: data.batchNo,
       batchNumber: data.batchNo,
-      serialNo: data.serialNo,
-      serialNumber: data.serialNo,
       lotNo: data.lotNo,
       lot: data.lotNo,
+      expiryDate: data.expiryDate,
+      receivedDate: data.receivedDate || now.slice(0, 10),
       type: data.type || "Adjust Stock",
       supplier: data.supplier,
       process: data.process || "Stock Balance > GR",
@@ -414,7 +616,8 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           description: mat.description,
           lot: data.lotNo,
           batchNumber: data.batchNo,
-          serialNumber: data.serialNo,
+          expiryDate: data.expiryDate,
+          receivedDate: data.receivedDate || now.slice(0, 10),
           quantity: data.quantity,
           price: price,
           type: data.type || "Adjust Stock",
@@ -440,7 +643,6 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     quantity: number;
     pricePerUnit?: number;
     batchNo?: string;
-    serialNo?: string;
     lotNo?: string;
     type?: string;
     supplier?: string;
@@ -500,8 +702,6 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       storageBin: data.storageBin || mat.storageBin,
       batchNo: data.batchNo,
       batchNumber: data.batchNo,
-      serialNo: data.serialNo,
-      serialNumber: data.serialNo,
       lotNo: data.lotNo,
       lot: data.lotNo,
       type: data.type || "Adjust Stock",
@@ -533,7 +733,6 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           description: mat.description,
           lot: data.lotNo,
           batchNumber: data.batchNo,
-          serialNumber: data.serialNo,
           quantity: data.quantity, // Positive line quantity
           price: price,
           type: data.type || "Adjust Stock",
@@ -692,8 +891,6 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         storageBin: transItem.storageBin,
         batchNo: item.batchNumber,
         batchNumber: item.batchNumber,
-        serialNo: item.serialNumber,
-        serialNumber: item.serialNumber,
         lotNo: item.lot,
         lot: item.lot,
         type: item.type || 'Adjust Stock',
@@ -825,8 +1022,6 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         storageBin: transItem.storageBin,
         batchNo: item.batchNumber,
         batchNumber: item.batchNumber,
-        serialNo: item.serialNumber,
-        serialNumber: item.serialNumber,
         lotNo: item.lot,
         lot: item.lot,
         type: item.type || 'Adjust Stock',
@@ -866,13 +1061,671 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true, document: newDoc };
   };
 
+  // Material Request & Purchase Requisition Handlers
+  const createMaterialRequest = (
+    reqData: Omit<MaterialRequest, 'id' | 'requestNo' | 'status' | 'createdAt' | 'updatedAt' | 'timeline'>
+  ): { success: boolean; error?: string; request?: MaterialRequest } => {
+    if (!reqData.items || reqData.items.length === 0) {
+      return { success: false, error: 'Request must contain at least 1 item.' };
+    }
+
+    const reqType = reqData.requestType || 'MATERIAL_REQUEST';
+    const now = new Date().toISOString();
+    const reqNo =
+      reqType === 'PURCHASE_REQUISITION'
+        ? generateNextPrNumber(materialRequests)
+        : generateNextMrNumber(materialRequests);
+    const id = `req-${Date.now()}`;
+
+    const actionTitle =
+      reqType === 'PURCHASE_REQUISITION'
+        ? 'Purchase Requisition Created'
+        : 'Material Request Created';
+
+    const comments =
+      reqType === 'PURCHASE_REQUISITION'
+        ? `Created PR for ${reqData.items.length} items (${reqData.priority} priority). Routed to Store for review.`
+        : `Created requisition for ${reqData.items.length} items (${reqData.priority} priority).`;
+
+    const newRequest: MaterialRequest = {
+      ...reqData,
+      id,
+      requestNo: reqNo,
+      requestType: reqType,
+      status: 'PENDING_APPROVAL',
+      createdAt: now,
+      updatedAt: now,
+      items: reqData.items.map(it => ({
+        ...it,
+        issuedQuantity: it.issuedQuantity || 0,
+      })),
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'PENDING_APPROVAL',
+          actionTitle,
+          actorName: reqData.requesterName || currentUser?.fullName || currentUser?.username || 'User',
+          actorRole: currentUser?.roleName || 'Requester',
+          timestamp: now,
+          comments,
+        },
+      ],
+    };
+
+    setMaterialRequests(prev => [newRequest, ...prev]);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('zycoda-new-request', { detail: newRequest }));
+    }
+    return { success: true, request: newRequest };
+  };
+
+  const approveMaterialRequest = (
+    id: string,
+    comments?: string
+  ): { success: boolean; error?: string } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Manager';
+    const actorRole = currentUser?.roleName || 'Approver';
+
+    const updated: MaterialRequest = {
+      ...target,
+      status: 'STORE_REVIEW',
+      approverName: actorName,
+      approvedAt: now,
+      updatedAt: now,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'STORE_REVIEW',
+          actionTitle: 'Request Approved',
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments: comments || 'Approved requisition and forwarded to Store for review.',
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true };
+  };
+
+  const storeReviewPass = (
+    id: string,
+    comments?: string
+  ): { success: boolean; error?: string } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Store Staff';
+    const actorRole = currentUser?.roleName || 'Store';
+
+    const updated: MaterialRequest = {
+      ...target,
+      status: 'APPROVED',
+      storeReviewerName: actorName,
+      storeReviewedAt: now,
+      updatedAt: now,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'APPROVED',
+          actionTitle: 'Store Review Passed',
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments: comments || 'Store stock verified and ready for goods issue.',
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true };
+  };
+
+  const rejectMaterialRequest = (
+    id: string,
+    reason: string
+  ): { success: boolean; error?: string } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+    if (!reason.trim()) return { success: false, error: 'Rejection reason is required' };
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Approver';
+    const actorRole = currentUser?.roleName || 'Staff';
+
+    const updated: MaterialRequest = {
+      ...target,
+      status: 'REJECTED',
+      rejectedAt: now,
+      rejectionReason: reason,
+      updatedAt: now,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'REJECTED',
+          actionTitle: target.requestType === 'PURCHASE_REQUISITION' ? 'PR Rejected' : 'Request Rejected',
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments: reason,
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true };
+  };
+
+  const proceedPurchaseRequisition = (
+    id: string,
+    notes?: string
+  ): { success: boolean; error?: string } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Store Staff';
+    const actorRole = currentUser?.roleName || 'Store';
+
+    const updated: MaterialRequest = {
+      ...target,
+      status: 'PROCEEDED_PURCHASING',
+      storeReviewerName: actorName,
+      storeReviewedAt: now,
+      storeProceedNotes: notes,
+      updatedAt: now,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'PROCEEDED_PURCHASING',
+          actionTitle: 'Store Reviewed & Proceeded to Purchasing',
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments:
+            notes ||
+            'Store stock and alternatives evaluated. Verified purchasing necessity and proceeded to Purchasing process.',
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true };
+  };
+
+  const convertPrToMaterialRequest = (
+    id: string,
+    notes?: string
+  ): { success: boolean; error?: string } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Store Staff';
+    const actorRole = currentUser?.roleName || 'Store';
+
+    const updated: MaterialRequest = {
+      ...target,
+      requestType: 'MATERIAL_REQUEST',
+      status: 'APPROVED',
+      storeReviewerName: actorName,
+      storeReviewedAt: now,
+      storeProceedNotes: notes || 'PR converted to Material Request by Store after stock verification.',
+      updatedAt: now,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'APPROVED',
+          actionTitle: 'PR Redirected & Converted to Material Request',
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments:
+            notes ||
+            'Stock availability confirmed. Converted PR into an approved Material Request for stock issuance.',
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true };
+  };
+
+  const issueMaterialRequest = (
+    id: string,
+    itemIssues?: ItemIssueSpec[],
+    notes?: string
+  ): { success: boolean; error?: string; document?: TransactionDocument } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+
+    // Build list of items to issue, accommodating multiple lot allocations per item
+    const giItems: Omit<TransactionItem, 'id'>[] = [];
+    const itemIssuedAmounts: Record<string, number> = {};
+
+    for (const it of target.items) {
+      const alreadyIssued = it.issuedQuantity || 0;
+      const remaining = Math.max(0, it.requestedQuantity - alreadyIssued);
+
+      const spec = itemIssues?.find(s => s.itemId === it.id);
+      const toIssue = spec ? Math.max(0, spec.issueQuantity) : remaining;
+
+      if (toIssue <= 0) continue;
+
+      if (toIssue > remaining) {
+        return {
+          success: false,
+          error: `Issue quantity (${toIssue} ${it.unit}) cannot exceed remaining requested quantity (${remaining} ${it.unit}) for ${it.materialCode}.`,
+        };
+      }
+
+      // Find the material
+      const targetMatId = spec?.materialId || it.materialId;
+      const mat = materials.find(m => m.id === targetMatId || m.materialCode === it.materialCode) || {
+        id: it.materialId,
+        materialCode: it.materialCode,
+        description: it.description,
+        standardPrice: it.pricePerUnit,
+        unit: it.unit,
+        plant: target.plant,
+        storageLocation: it.storageLocation,
+        storageBin: it.storageBin,
+      };
+
+      if (spec?.lotAllocations && spec.lotAllocations.length > 0) {
+        const totalAllocated = spec.lotAllocations.reduce((sum, a) => sum + Math.max(0, a.quantity), 0);
+        if (totalAllocated <= 0) continue;
+
+        if (totalAllocated > toIssue) {
+          return {
+            success: false,
+            error: `Total lot allocated quantity (${totalAllocated}) cannot exceed intended issue quantity (${toIssue}) for ${it.materialCode}.`,
+          };
+        }
+
+        for (const alloc of spec.lotAllocations) {
+          if (alloc.quantity <= 0) continue;
+          giItems.push({
+            materialId: mat.id,
+            materialCode: mat.materialCode,
+            description: mat.description,
+            quantity: alloc.quantity,
+            price: mat.standardPrice || it.pricePerUnit,
+            totalPrice: alloc.quantity * (mat.standardPrice || it.pricePerUnit),
+            lot: alloc.lot,
+            batchNumber: alloc.batchNumber || alloc.lot,
+            storageLocation: alloc.storageLocation || it.storageLocation || mat.storageLocation || 'MAIN',
+            storageBin: alloc.storageBin || it.storageBin || mat.storageBin || 'BIN-01',
+            comment: it.remarks,
+            unit: mat.unit || it.unit,
+          });
+        }
+        itemIssuedAmounts[it.id] = totalAllocated;
+      } else {
+        const available = getCurrentStock(mat.id, transactions);
+        if (toIssue > available) {
+          return {
+            success: false,
+            error: `Insufficient available stock for ${it.materialCode}. Available: ${available} ${it.unit}, Trying to issue: ${toIssue} ${it.unit}.`,
+          };
+        }
+
+        giItems.push({
+          materialId: mat.id,
+          materialCode: mat.materialCode,
+          description: mat.description,
+          quantity: toIssue,
+          price: mat.standardPrice || it.pricePerUnit,
+          totalPrice: toIssue * (mat.standardPrice || it.pricePerUnit),
+          lot: it.lot,
+          batchNumber: it.batchNumber,
+          storageLocation: it.storageLocation || mat.storageLocation || 'MAIN',
+          storageBin: it.storageBin || mat.storageBin || 'BIN-01',
+          comment: it.remarks,
+          unit: it.unit,
+        });
+        itemIssuedAmounts[it.id] = toIssue;
+      }
+    }
+
+    if (giItems.length === 0) {
+      return { success: false, error: 'No items or quantities to issue.' };
+    }
+
+    // Execute Goods Issue document creation
+    const giDocResult = createDocumentGoodsIssue({
+      plant: target.plant,
+      referenceNumber: target.requestNo,
+      picklist: target.jobOrderNo || target.workOrderNo || target.requestNo,
+      comment: notes || `Material Request Issuance (${target.requestNo}): ${target.purpose}`,
+      items: giItems,
+    });
+
+    if (!giDocResult.success || !giDocResult.document) {
+      return { success: false, error: giDocResult.error || 'Failed to issue goods' };
+    }
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Store Staff';
+    const actorRole = currentUser?.roleName || 'Store';
+    const giNumber = giDocResult.document.transactionNumber;
+
+    // Update item issued quantities
+    const updatedItems = target.items.map(it => {
+      const newlyIssued = itemIssuedAmounts[it.id] || 0;
+      return {
+        ...it,
+        issuedQuantity: (it.issuedQuantity || 0) + newlyIssued,
+      };
+    });
+
+    const isFullyIssued = updatedItems.every(
+      it => (it.issuedQuantity || 0) >= it.requestedQuantity
+    );
+    const newStatus: MaterialRequestStatus = isFullyIssued ? 'ISSUED' : 'PARTIALLY_ISSUED';
+    const actionTitle = isFullyIssued
+      ? `Goods Fully Issued (${giNumber})`
+      : `Goods Partially Issued (${giNumber})`;
+
+    const updated: MaterialRequest = {
+      ...target,
+      status: newStatus,
+      issuedByName: actorName,
+      issuedAt: now,
+      linkedGiNumber: giNumber,
+      updatedAt: now,
+      items: updatedItems,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: newStatus,
+          actionTitle,
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments:
+            notes ||
+            `Issued items under Goods Issue Document ${giNumber}. Stock ledger and balances updated.`,
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true, document: giDocResult.document };
+  };
+
+  const closeMaterialRequest = (
+    id: string
+  ): { success: boolean; error?: string } => {
+    const target = materialRequests.find(r => r.id === id);
+    if (!target) return { success: false, error: 'Request not found' };
+
+    const now = new Date().toISOString();
+    const actorName = currentUser?.fullName || currentUser?.username || 'Store Staff';
+    const actorRole = currentUser?.roleName || 'Store';
+
+    const updated: MaterialRequest = {
+      ...target,
+      status: 'CLOSED',
+      closedAt: now,
+      updatedAt: now,
+      timeline: [
+        {
+          id: `tl-${Date.now()}`,
+          status: 'CLOSED',
+          actionTitle: 'Request Closed',
+          actorName,
+          actorRole,
+          timestamp: now,
+          comments: 'Requisition completed and closed.',
+        },
+        ...target.timeline,
+      ],
+    };
+
+    setMaterialRequests(prev => prev.map(r => (r.id === id ? updated : r)));
+    return { success: true };
+  };
+
+  // Cross-Store Transfer Handler with Lot Preservation (Internal Store Transfer within Same Plant)
+  const transferMaterial = (data: {
+    plant?: string;
+    fromPlant?: string;
+    fromStore: string;
+    toPlant?: string;
+    toStore: string;
+    materialId: string;
+    quantity: number;
+    lot?: string;
+    batchNumber?: string;
+    reason?: string;
+    comment?: string;
+  }): { success: boolean; error?: string; transfer?: MaterialTransfer } => {
+    const activePlant = data.plant || data.fromPlant || 'PLANT-01';
+    const targetPlant = data.toPlant || activePlant;
+
+    // RULE 1: Stock Transfer must NOT allow users to transfer materials across different Plants.
+    if (activePlant !== targetPlant) {
+      return {
+        success: false,
+        error: 'Inter-plant transfer is not permitted. Stock Transfer can only occur between stores within the same plant.',
+      };
+    }
+
+    // RULE 4: Prevent Same Store Transfer
+    if (data.fromStore === data.toStore) {
+      return {
+        success: false,
+        error: 'Source Store and Destination Store cannot be the same.',
+      };
+    }
+
+    const mat = materials.find(m => m.id === data.materialId);
+    if (!mat) return { success: false, error: 'Material not found.' };
+
+    if (data.quantity <= 0) {
+      return { success: false, error: 'Transfer quantity must be greater than 0.' };
+    }
+
+    // Check available stock specifically in source plant and source store
+    const lotBalances = getLotBalances(activePlant, data.fromStore);
+    const matchingLots = lotBalances.filter(l => l.materialId === mat.id);
+    let availableInSource = 0;
+    let sourceLot = matchingLots.find(l => !data.lot || l.lot === data.lot);
+
+    if (data.lot) {
+      const specificLot = matchingLots.find(l => l.lot === data.lot);
+      availableInSource = specificLot ? specificLot.quantity : 0;
+      sourceLot = specificLot;
+    } else {
+      availableInSource = matchingLots.reduce((sum, l) => sum + l.quantity, 0);
+      if (availableInSource === 0 && mat.plant === activePlant && mat.storageLocation === data.fromStore) {
+        availableInSource = getCurrentStock(mat.id, transactions);
+      }
+    }
+
+    if (data.quantity > availableInSource) {
+      return {
+        success: false,
+        error: `Insufficient stock in ${activePlant} / ${data.fromStore}. Available: ${availableInSource} ${mat.unit}, Requested: ${data.quantity} ${mat.unit}`,
+      };
+    }
+
+    const now = new Date().toISOString();
+    const transferNo = generateNextTransferNumber(materialTransfers);
+    const preservedLot = data.lot || sourceLot?.lot || 'LOT-2608-01';
+    const preservedBatch = data.batchNumber || sourceLot?.batchNumber || 'B-2608';
+    const actorName = currentUser?.fullName || currentUser?.username || 'Store Staff';
+
+    const sourceCurrent = availableInSource;
+    const price = mat.standardPrice || 0;
+
+    // Calculate destination store balance before for accurate audit ledger
+    const destLotBalances = getLotBalances(activePlant, data.toStore);
+    const destLots = destLotBalances.filter(l => l.materialId === mat.id);
+    const destBalanceBefore = data.lot
+      ? (destLots.find(l => l.lot === preservedLot)?.quantity || 0)
+      : destLots.reduce((sum, l) => sum + l.quantity, 0);
+
+    // 1. Source Store Debit Tx (Outbound GI)
+    const debitTx: StockTransaction = {
+      id: `tx-tr-out-${Date.now()}`,
+      documentNo: transferNo,
+      transactionNumber: transferNo,
+      referenceNo: transferNo,
+      referenceNumber: transferNo,
+      plant: activePlant,
+      materialId: mat.id,
+      materialCode: mat.materialCode,
+      description: mat.description,
+      source: 'Transfer',
+      transactionType: 'GI',
+      quantity: -data.quantity,
+      balanceBefore: sourceCurrent,
+      balanceAfter: Math.max(0, sourceCurrent - data.quantity),
+      pricePerUnit: price,
+      price,
+      totalPrice: data.quantity * price,
+      storageLocation: data.fromStore,
+      storageBin: mat.storageBin,
+      lotNo: preservedLot,
+      lot: preservedLot,
+      batchNo: preservedBatch,
+      batchNumber: preservedBatch,
+      process: 'Store Transfer (Outbound GI)',
+      comment: `Transfer to ${data.toStore} (${activePlant}). Reason: ${data.reason || 'Store Rebalance'}. Note: ${data.comment || ''}`,
+      fromStore: data.fromStore,
+      toStore: data.toStore,
+      transferRoute: `${data.fromStore} → ${data.toStore}`,
+      transferFromBalanceBefore: sourceCurrent,
+      transferFromBalanceAfter: Math.max(0, sourceCurrent - data.quantity),
+      transferToBalanceBefore: destBalanceBefore,
+      transferToBalanceAfter: destBalanceBefore + data.quantity,
+      createdBy: actorName,
+      createdAt: now,
+    };
+
+    // 2. Dest Store Credit Tx (Inbound GR) - preserves EXACT lot & batch identity
+    const creditTx: StockTransaction = {
+      id: `tx-tr-in-${Date.now()}`,
+      documentNo: transferNo,
+      transactionNumber: transferNo,
+      referenceNo: transferNo,
+      referenceNumber: transferNo,
+      plant: activePlant,
+      materialId: mat.id,
+      materialCode: mat.materialCode,
+      description: mat.description,
+      source: 'Transfer',
+      transactionType: 'GR',
+      quantity: data.quantity,
+      balanceBefore: destBalanceBefore,
+      balanceAfter: destBalanceBefore + data.quantity,
+      pricePerUnit: price,
+      price,
+      totalPrice: data.quantity * price,
+      storageLocation: data.toStore,
+      storageBin: mat.storageBin,
+      lotNo: preservedLot,
+      lot: preservedLot,
+      batchNo: preservedBatch,
+      batchNumber: preservedBatch,
+      process: 'Store Transfer (Inbound GR)',
+      comment: `Transferred from ${data.fromStore} (${activePlant}). Reason: ${data.reason || 'Store Rebalance'}. Note: ${data.comment || ''}`,
+      fromStore: data.fromStore,
+      toStore: data.toStore,
+      transferRoute: `${data.fromStore} → ${data.toStore}`,
+      transferFromBalanceBefore: sourceCurrent,
+      transferFromBalanceAfter: Math.max(0, sourceCurrent - data.quantity),
+      transferToBalanceBefore: destBalanceBefore,
+      transferToBalanceAfter: destBalanceBefore + data.quantity,
+      createdBy: actorName,
+      createdAt: now,
+    };
+
+    // 3. New Transfer Document Record
+    const newTransfer: MaterialTransfer = {
+      id: `tr-${Date.now()}`,
+      transferNumber: transferNo,
+      fromPlant: activePlant,
+      fromStore: data.fromStore,
+      toPlant: activePlant,
+      toStore: data.toStore,
+      materialId: mat.id,
+      materialCode: mat.materialCode,
+      description: mat.description,
+      quantity: data.quantity,
+      unit: mat.unit,
+      lot: preservedLot,
+      batchNumber: preservedBatch,
+      reason: data.reason,
+      comment: data.comment,
+      transferredBy: actorName,
+      createdAt: now,
+      status: 'COMPLETED',
+    };
+
+    // 4. Transaction Document for Ledger
+    const newDoc: TransactionDocument = {
+      id: `doc-tr-${Date.now()}`,
+      transactionNumber: transferNo,
+      transactionType: 'TRANSFER',
+      plant: activePlant,
+      referenceNumber: `TR:${data.fromStore}->${data.toStore}`,
+      createdDateTime: now,
+      createdBy: actorName,
+      comment: data.comment || `Transfer ${data.fromStore} → ${data.toStore}`,
+      status: 'COMPLETED',
+      items: [
+        {
+          id: `item-tr-${Date.now()}`,
+          materialId: mat.id,
+          materialCode: mat.materialCode,
+          description: mat.description,
+          lot: preservedLot,
+          batchNumber: preservedBatch,
+          quantity: data.quantity,
+          price: price,
+          type: 'Store Transfer',
+          storageLocation: `${data.fromStore} → ${data.toStore}`,
+          unit: mat.unit,
+          totalPrice: data.quantity * price,
+        },
+      ],
+      totalQuantity: data.quantity,
+      totalValue: data.quantity * price,
+    };
+
+    setTransactions(prev => [debitTx, creditTx, ...prev]);
+    setMaterialTransfers(prev => [newTransfer, ...prev]);
+    setTransactionDocuments(prev => [newDoc, ...prev]);
+
+    return { success: true, transfer: newTransfer };
+  };
+
   const resetStockDemoData = () => {
     setMaterials(INITIAL_MATERIALS);
     setTransactions(INITIAL_TRANSACTIONS);
     setTransactionDocuments(INITIAL_TRANSACTION_DOCUMENTS);
+    setMaterialRequests(INITIAL_MATERIAL_REQUESTS);
+    setMaterialTransfers(INITIAL_TRANSFERS);
     localStorage.setItem(MATERIALS_STORAGE_KEY, JSON.stringify(INITIAL_MATERIALS));
     localStorage.setItem(TRANSACTIONS_STORAGE_KEY, JSON.stringify(INITIAL_TRANSACTIONS));
     localStorage.setItem(DOCUMENTS_STORAGE_KEY, JSON.stringify(INITIAL_TRANSACTION_DOCUMENTS));
+    localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(INITIAL_MATERIAL_REQUESTS));
+    localStorage.setItem(TRANSFERS_STORAGE_KEY, JSON.stringify(INITIAL_TRANSFERS));
     resetAuthData();
   };
 
@@ -882,6 +1735,9 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         materials,
         transactions,
         transactionDocuments,
+        materialRequests,
+        materialTransfers,
+        getLotBalances,
         addMaterial,
         updateMaterial,
         deleteMaterial,
@@ -890,6 +1746,15 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createStockAdjustment,
         createDocumentGoodsReceipt,
         createDocumentGoodsIssue,
+        createMaterialRequest,
+        approveMaterialRequest,
+        storeReviewPass,
+        rejectMaterialRequest,
+        proceedPurchaseRequisition,
+        convertPrToMaterialRequest,
+        issueMaterialRequest,
+        closeMaterialRequest,
+        transferMaterial,
         getItemStock,
         getItemStatus,
         getItemLastMove,

@@ -6,16 +6,16 @@ import { useStock } from '../../context/StockContext';
 import { useToast } from '../../context/ToastContext';
 import { Upload, Image as ImageIcon, CheckCircle2, AlertCircle } from 'lucide-react';
 
+import { getAllPlants, getStoresForPlant } from '../../utils/plantStoreMaster';
+
 interface MaterialFormDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   initialMaterial?: Material | null; // If present -> Edit mode, if null -> Add mode
 }
 
-const PLANT_OPTIONS = ["DEMO", "PLANT-01", "PLANT-02"];
 const TYPE_OPTIONS = ["Spare Part", "Mechanical", "Electrical", "Instrument", "Pneumatic", "Consumable", "Raw Material"];
 const UNIT_OPTIONS = ["EA", "PC", "SET", "BOX", "KG", "METER", "ROLL"];
-const SLOC_OPTIONS = ["MAIN", "SPARE", "MAINT", "WH01", "WH02", "BUFFER"];
 
 export const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({
   isOpen,
@@ -23,8 +23,10 @@ export const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({
   initialMaterial,
 }) => {
   const isEdit = Boolean(initialMaterial);
-  const { addMaterial, updateMaterial } = useStock();
+  const { materials, addMaterial, updateMaterial } = useStock();
   const { addToast } = useToast();
+
+  const plantOptions = React.useMemo(() => getAllPlants(materials), [materials]);
 
   const [plant, setPlant] = useState("DEMO");
   const [materialCode, setMaterialCode] = useState("");
@@ -40,6 +42,7 @@ export const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({
   const [rop, setRop] = useState(3);
   const [leadTime, setLeadTime] = useState(7);
 
+  const storeOptions = React.useMemo(() => getStoresForPlant(plant, materials), [plant, materials]);
   const [storageLocation, setStorageLocation] = useState("MAIN");
   const [storageBin, setStorageBin] = useState("");
   const [image, setImage] = useState("");
@@ -237,11 +240,18 @@ export const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({
               </label>
               <select
                 value={plant}
-                onChange={e => setPlant(e.target.value)}
+                onChange={e => {
+                  const newPlant = e.target.value;
+                  setPlant(newPlant);
+                  const validStores = getStoresForPlant(newPlant, materials).map(s => s.code);
+                  if (!validStores.includes(storageLocation)) {
+                    setStorageLocation(validStores[0] || 'MAIN');
+                  }
+                }}
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
               >
-                {PLANT_OPTIONS.map(p => (
-                  <option key={p} value={p}>{p}</option>
+                {plantOptions.map(p => (
+                  <option key={p.code} value={p.code}>{p.label || p.name || p.code}</option>
                 ))}
               </select>
             </div>
@@ -429,8 +439,8 @@ export const MaterialFormDrawer: React.FC<MaterialFormDrawerProps> = ({
                 onChange={e => setStorageLocation(e.target.value)}
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-app-darkSurface border border-app-border dark:border-app-darkBorder rounded-lg text-app-text dark:text-app-darkText outline-none focus:border-brand-blue"
               >
-                {SLOC_OPTIONS.map(s => (
-                  <option key={s} value={s}>{s}</option>
+                {storeOptions.map(s => (
+                  <option key={s.code} value={s.code}>{s.label || s.name || s.code}</option>
                 ))}
               </select>
             </div>
